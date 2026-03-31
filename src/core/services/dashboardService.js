@@ -1,0 +1,264 @@
+// Dashboard service - fetches stats from Firestore
+import { db } from '../firebase/firebaseConfig.js';
+import { userFromFirestore } from '../models/User.js';
+import { bookingFromFirestore, BookingHelpers } from '../models/Booking.js';
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  getCountFromServer,
+  Timestamp,
+  onSnapshot,
+} from 'firebase/firestore';
+
+// Collection references
+const usersRef = collection(db, 'users');
+const bookingsRef = collection(db, 'bookings');
+const adminUsersRef = collection(db, 'adminUsers');
+
+// Get user stats
+export async function getUserStats() {
+  try {
+    // Total users count
+    const totalSnapshot = await getCountFromServer(usersRef);
+    const totalUsers = totalSnapshot.data().count;
+
+    // Service providers
+    const providersQuery = query(usersRef, where('userType', '==', 'serviceProvider'));
+    const providersSnapshot = await getCountFromServer(providersQuery);
+    const totalProviders = providersSnapshot.data().count;
+
+    // Customers
+    const customersQuery = query(usersRef, where('userType', '==', 'customer'));
+    const customersSnapshot = await getCountFromServer(customersQuery);
+    const totalCustomers = customersSnapshot.data().count;
+
+    // Online users (users with isOnline = true)
+    const onlineQuery = query(
+      usersRef,
+      where('isOnline', '==', true)
+    );
+    const onlineSnapshot = await getCountFromServer(onlineQuery);
+    const onlineUsers = onlineSnapshot.data().count;
+
+    // Pending verification users
+    const pendingQuery = query(
+      usersRef,
+      where('accountStatus', '==', 'pending_approval')
+    );
+    const pendingSnapshot = await getCountFromServer(pendingQuery);
+    const pendingVerifications = pendingSnapshot.data().count;
+
+    return {
+      totalUsers,
+      totalProviders,
+      totalCustomers,
+      onlineUsers,
+      offlineUsers: totalUsers - onlineUsers,
+      pendingVerifications,
+    };
+  } catch (error) {
+    console.error('Error fetching user stats:', error);
+    return {
+      totalUsers: 0,
+      totalProviders: 0,
+      totalCustomers: 0,
+      onlineUsers: 0,
+      offlineUsers: 0,
+      pendingVerifications: 0,
+    };
+  }
+}
+
+// Get booking stats
+export async function getBookingStats() {
+  try {
+    // Total bookings
+    const totalSnapshot = await getCountFromServer(bookingsRef);
+    const totalBookings = totalSnapshot.data().count;
+
+    // Active bookings (pending or accepted)
+    const activeQuery = query(
+      bookingsRef,
+      where('status', 'in', ['pending', 'accepted'])
+    );
+    const activeSnapshot = await getCountFromServer(activeQuery);
+    const activeBookings = activeSnapshot.data().count;
+
+    // Pending bookings specifically
+    const pendingQuery = query(bookingsRef, where('status', '==', 'pending'));
+    const pendingSnapshot = await getCountFromServer(pendingQuery);
+    const pendingBookings = pendingSnapshot.data().count;
+
+    // Completed bookings
+    const completedQuery = query(bookingsRef, where('status', '==', 'completed'));
+    const completedSnapshot = await getCountFromServer(completedQuery);
+    const completedBookings = completedSnapshot.data().count;
+
+    // Cancelled bookings
+    const cancelledQuery = query(bookingsRef, where('status', '==', 'cancelled'));
+    const cancelledSnapshot = await getCountFromServer(cancelledQuery);
+    const cancelledBookings = cancelledSnapshot.data().count;
+
+    // Calculate both overall and app revenue from completed bookings using Booking model
+    const revenueQuery = query(
+      bookingsRef,
+      where('status', '==', 'completed'),
+      where('paymentStatus', '==', 'completed')
+    );
+    const revenueSnapshot = await getDocs(revenueQuery);
+    let totalRevenue = 0;
+    let appRevenue = 0;
+    let providerPayout = 0;
+    const completedBookingsList = revenueSnapshot.docs.map(doc => bookingFromFirestore(doc));
+    completedBookingsList.forEach((booking) => {
+      totalRevenue += BookingHelpers.getOverallRevenue(booking);
+      appRevenue += BookingHelpers.getAppRevenue(booking);
+      providerPayout += BookingHelpers.getProviderPayout(booking);
+    });
+
+    return {
+      totalBookings,
+      activeBookings,
+      pendingBookings,
+      completedBookings,
+      cancelledBookings,
+      totalRevenue,
+      appRevenue,
+      providerPayout,
+    };
+  } catch (error) {
+    console.error('Error fetching booking stats:', error);
+    return {
+      totalBookings: 0,
+      activeBookings: 0,
+      pendingBookings: 0,
+      completedBookings: 0,
+      cancelledBookings: 0,
+      totalRevenue: 0,
+      appRevenue: 0,
+      providerPayout: 0,
+    };
+  }
+}
+
+// Get bookings data for charts (last 30 days) using Booking model
+// revenueType: 'overall' | 'app' | 'provider'
+export async function getBookingsChartData(revenueType = 'overall') {
+  try {
+    const thirtyDaysAgo = Timestamp.fromDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
+    const chartQuery = query(
+      bookingsRef,
+      where('createdAt', '>=', thirtyDaysAgo)
+    );
+    const snapshot = await getDocs(chartQuery);
+
+    // Parse all bookings using model
+    const bookings = snapshot.docs.map(doc => bookingFromFirestore(doc));
+
+    // Group by date
+    const dailyData = {};
+    const today = new Date();
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      dailyData[dateStr] = { date: dateStr, bookings: 0, revenue: 0 };
+    }
+
+    bookings.forEach((booking) => {
+      const createdAt = booking.createdAt;
+      if (createdAt) {
+        const date = createdAt instanceof Date ? createdAt : createdAt.toDate();
+        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        if (dailyData[dateStr]) {
+          dailyData[dateStr].bookings += 1;
+          
+          // Calculate revenue based on selected type
+          let revenue = 0;
+          if (revenueType === 'app') {
+            revenue = BookingHelpers.getAppRevenue(booking);
+          } else if (revenueType === 'provider') {
+            revenue = BookingHelpers.getProviderPayout(booking);
+          } else {
+            // overall (default)
+            revenue = BookingHelpers.getOverallRevenue(booking);
+          }
+          dailyData[dateStr].revenue += revenue;
+        }
+      }
+    });
+
+    return Object.values(dailyData);
+  } catch (error) {
+    console.error('Error fetching chart data:', error);
+    return [];
+  }
+}
+
+// Subscribe to real-time stats updates with User model parsing
+export function subscribeToStats(callback) {
+  const unsubscribers = [];
+
+  // Subscribe to users with model parsing
+  const usersUnsub = onSnapshot(usersRef, (snapshot) => {
+    const users = snapshot.docs.map(doc => userFromFirestore(doc));
+    const onlineUsers = users.filter(u => u.isOnline === true).length;
+    
+    callback((prev) => ({ 
+      ...prev, 
+      totalUsers: snapshot.size,
+      onlineUsers: onlineUsers,
+      offlineUsers: snapshot.size - onlineUsers,
+      users: users // Full user models for detailed display
+    }));
+  });
+  unsubscribers.push(usersUnsub);
+
+  // Subscribe to bookings count
+  const bookingsUnsub = onSnapshot(bookingsRef, (snapshot) => {
+    callback((prev) => ({ ...prev, totalBookings: snapshot.size }));
+  });
+  unsubscribers.push(bookingsUnsub);
+
+  return () => {
+    unsubscribers.forEach((unsub) => unsub());
+  };
+}
+
+// Fetch users list with full User model parsing
+export async function getUsersList(options = {}) {
+  try {
+    const { userType, isOnline, accountStatus, limit = 100 } = options;
+    
+    let q = query(usersRef);
+    
+    if (userType) {
+      q = query(q, where('userType', '==', userType));
+    }
+    if (isOnline !== undefined) {
+      q = query(q, where('isOnline', '==', isOnline));
+    }
+    if (accountStatus) {
+      q = query(q, where('accountStatus', '==', accountStatus));
+    }
+    
+    const snapshot = await getDocs(q);
+    const users = snapshot.docs.map(doc => userFromFirestore(doc));
+    
+    return {
+      success: true,
+      data: users,
+      count: users.length,
+    };
+  } catch (error) {
+    console.error('Error fetching users list:', error);
+    return {
+      success: false,
+      error: error.message,
+      data: [],
+      count: 0,
+    };
+  }
+}
