@@ -1,8 +1,21 @@
 import React from 'react';
 
-export default function StatCard({ title, value, subtitle, icon: Icon, color, trend }) {
+export default function StatCard({ title, value, subtitle, icon: Icon, color, trend, onClick }) {
   return (
-    <div className="stat-card">
+    <div
+      className="stat-card"
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') onClick();
+            }
+          : undefined
+      }
+      style={onClick ? { cursor: 'pointer' } : undefined}
+    >
       <div className="stat-card-header">
         <div className={`stat-icon ${color}`}>
           <Icon size={24} />

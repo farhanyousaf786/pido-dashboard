@@ -1715,6 +1715,21 @@ body {
   min-width: 100px;
 }
 
+.verification-stat-item.clickable {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.verification-stat-item.clickable:hover {
+  background: var(--color-lightest-grey);
+}
+
+.verification-stat-item.clickable.active {
+  background: rgba(254, 127, 32, 0.12);
+}
+
 .verification-stat-item:last-child {
   border-right: none;
 }
@@ -2090,6 +2105,40 @@ body {
   border-radius: 8px;
 }
 
+.document-item.document-preview {
+  border: 1px solid var(--color-light-gray);
+  text-align: left;
+  cursor: pointer;
+}
+
+.document-item.document-preview:hover {
+  border-color: var(--color-primary);
+  background: #fff;
+}
+
+.doc-image {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--color-light-gray);
+  background: #fff;
+}
+
+.doc-image-full {
+  width: 100%;
+  height: auto;
+  max-height: 70vh;
+  object-fit: contain;
+  border-radius: 10px;
+  border: 1px solid var(--color-light-gray);
+  background: #fff;
+}
+
+.image-modal {
+  max-width: 900px;
+}
+
 .doc-label {
   font-size: 0.8rem;
   color: var(--color-light-grey);
@@ -2151,6 +2200,56 @@ body {
   gap: 0.75rem;
 }
 
+.status-dropdown-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.status-select {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  padding-right: 2.75rem;
+  border: 1px solid var(--color-light-gray);
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-dim-black);
+  background: white;
+  -webkit-appearance: menulist;
+  appearance: menulist;
+}
+
+.status-select:disabled {
+  opacity: 0.7;
+}
+
+.update-status-btn {
+  padding: 0.75rem 1rem;
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+
+.update-status-btn:hover {
+  background: var(--color-dark-primary);
+}
+
+.update-status-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.current-status-tag {
+  margin-top: 1rem;
+}
+
 .approve-btn {
   display: flex;
   align-items: center;
@@ -2199,6 +2298,35 @@ body {
 .reject-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.pending-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: white;
+  color: #F57C00;
+  border: 2px solid #F57C00;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.pending-btn:hover {
+  background: #FFF8E1;
+}
+
+.pending-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.action-section-meta {
+  margin-top: 1rem;
 }
 
 /* Resolved State */

@@ -6,6 +6,7 @@ import DashboardPage from './dashboard/Dashboard';
 import UsersPage from './users/Users';
 import UserDetailPage from './users/components/UserDetail.jsx';
 import VerificationsPage from './verifications/Verifications';
+import NotificationsPage from './notifications/Notifications';
 import ReferralPage from './referral/Referral';
 import SettingsPage from './settings/Settings';
 import { useAuth } from '../core/auth/AuthContext';
@@ -16,6 +17,7 @@ const PAGES = {
   users: 'users',
   userDetail: 'userDetail',
   verifications: 'verifications',
+  notifications: 'notifications',
   referral: 'referral',
   settings: 'settings',
   adminSettings: 'adminSettings',
@@ -26,23 +28,40 @@ function Main() {
   const [activePage, setActivePage] = useState(PAGES.dashboard);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [usersInitialFilters, setUsersInitialFilters] = useState(null);
 
   const handleNavigate = (pageKey, user = null) => {
     if (pageKey === PAGES.userDetail && user) {
       setSelectedUser(user);
     }
+    if (pageKey === PAGES.users) {
+      setUsersInitialFilters(null);
+    }
     setActivePage(pageKey);
+    setSidebarOpen(false);
+  };
+
+  const handleNavigateToUsersWithFilters = (filters) => {
+    setUsersInitialFilters(filters || {});
+    setActivePage(PAGES.users);
     setSidebarOpen(false);
   };
 
   const renderPage = () => {
     switch (activePage) {
       case PAGES.users:
-        return <UsersPage onUserClick={(user) => handleNavigate(PAGES.userDetail, user)} />;
+        return (
+          <UsersPage
+            onUserClick={(user) => handleNavigate(PAGES.userDetail, user)}
+            initialFilters={usersInitialFilters}
+          />
+        );
       case PAGES.userDetail:
         return <UserDetailPage user={selectedUser} onBack={() => handleNavigate(PAGES.users)} />;
       case PAGES.verifications:
         return <VerificationsPage />;
+      case PAGES.notifications:
+        return <NotificationsPage />;
       case PAGES.referral:
         return <ReferralPage />;
       case PAGES.settings:
@@ -51,7 +70,7 @@ function Main() {
         return <SettingsPage />; // placeholder until dedicated admin settings page exists
       case PAGES.dashboard:
       default:
-        return <DashboardPage />;
+        return <DashboardPage onNavigateToUsers={handleNavigateToUsersWithFilters} />;
     }
   };
 

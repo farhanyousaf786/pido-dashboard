@@ -29,7 +29,7 @@ import RevenueChart from './components/RevenueChart.jsx';
 import ErrorState from './components/ErrorState.jsx';
 import InfoBox from './components/InfoBox.jsx';
 
-export default function Dashboard() {
+export default function Dashboard({ onNavigateToUsers }) {
   const [userStats, setUserStats] = useState(null);
   const [bookingStats, setBookingStats] = useState(null);
   const [chartData, setChartData] = useState([]);
@@ -95,6 +95,7 @@ export default function Dashboard() {
                 subtitle="Pido users"
                 icon={Users}
                 color="blue"
+                onClick={() => onNavigateToUsers && onNavigateToUsers({})}
               />
               <StatCard
                 title="Service Providers"
@@ -102,6 +103,7 @@ export default function Dashboard() {
                 subtitle="Active professionals"
                 icon={Briefcase}
                 color="orange"
+                onClick={() => onNavigateToUsers && onNavigateToUsers({ userType: 'serviceProvider' })}
               />
               <StatCard
                 title="Customers"
@@ -109,6 +111,7 @@ export default function Dashboard() {
                 subtitle="Registered clients"
                 icon={User}
                 color="purple"
+                onClick={() => onNavigateToUsers && onNavigateToUsers({ userType: 'customer' })}
               />
               <StatCard
                 title="Online Now"
@@ -116,6 +119,7 @@ export default function Dashboard() {
                 subtitle="Active in last 5 minutes"
                 icon={UserCheck}
                 color="green"
+                onClick={() => onNavigateToUsers && onNavigateToUsers({ isOnline: true })}
               />
               <StatCard
                 title="Offline Users"
@@ -123,6 +127,7 @@ export default function Dashboard() {
                 subtitle="Not currently active"
                 icon={UserX}
                 color="gray"
+                onClick={() => onNavigateToUsers && onNavigateToUsers({ isOnline: false })}
               />
               
               <StatCard
@@ -131,6 +136,7 @@ export default function Dashboard() {
                 subtitle="Awaiting approval"
                 icon={Shield}
                 color="red"
+                onClick={() => onNavigateToUsers && onNavigateToUsers({ accountStatus: 'pending_approval' })}
               />
             </>
           )}

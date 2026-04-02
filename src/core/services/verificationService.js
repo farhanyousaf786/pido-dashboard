@@ -5,6 +5,9 @@ import {
   onSnapshot,
   doc,
   getDoc,
+  getDocs,
+  where,
+  limit,
   updateDoc,
   deleteDoc,
   serverTimestamp,
@@ -12,6 +15,101 @@ import {
 import { db } from '../firebase/firebaseConfig.js';
 
 export const verificationService = {
+  resolveUserIdFromRequestData: async (data, requestId) => {
+    const directUserId =
+      data?.userId ||
+      data?.uid ||
+      data?.userUid ||
+      data?.customerUid ||
+      data?.providerUid;
+
+    if (directUserId) return directUserId;
+
+    const phoneNumber = (data?.phoneNumber ?? '').toString().trim();
+    if (phoneNumber) {
+      const q = query(collection(db, 'users'), where('phoneNumber', '==', phoneNumber), limit(1));
+      const snap = await getDocs(q);
+      if (!snap.empty) return snap.docs[0].id;
+    }
+
+    const email = (data?.email ?? '').toString().trim();
+    if (email) {
+      const q = query(collection(db, 'users'), where('email', '==', email), limit(1));
+      const snap = await getDocs(q);
+      if (!snap.empty) return snap.docs[0].id;
+    }
+
+    return requestId || null;
+  },
+
+  subscribeToVerificationRequestDoc: (requestId, callback) => {
+    if (!requestId) {
+      callback(null);
+      return () => {};
+    }
+
+    const requestRef = doc(db, 'verificationRequests', requestId);
+    return onSnapshot(
+      requestRef,
+      (snap) => {
+        callback(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+      },
+      (error) => {
+        console.error('Error subscribing to verification request:', error);
+        callback(null);
+      }
+    );
+  },
+
+  updateUserAccountStatus: async (userId, accountStatus) => {
+    if (!userId) return { success: false, error: 'Missing userId' };
+    try {
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, {
+        accountStatus: accountStatus,
+        updatedAt: serverTimestamp(),
+      });
+      return { success: true };
+    } catch (error) {
+      console.error('Error updating user account status:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  getUserAccountStatus: async (userId) => {
+    if (!userId) return { success: false, error: 'Missing userId', accountStatus: null };
+    try {
+      const userRef = doc(db, 'users', userId);
+      const userSnap = await getDoc(userRef);
+      if (!userSnap.exists()) {
+        return { success: false, error: 'User not found', accountStatus: null };
+      }
+      return { success: true, accountStatus: userSnap.data()?.accountStatus ?? null };
+    } catch (error) {
+      console.error('Error reading user account status:', error);
+      return { success: false, error: error.message, accountStatus: null };
+    }
+  },
+
+  subscribeToUserDoc: (userId, callback) => {
+    if (!userId) {
+      callback(null);
+      return () => {};
+    }
+
+    const userRef = doc(db, 'users', userId);
+    return onSnapshot(
+      userRef,
+      (snap) => {
+        callback(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+      },
+      (error) => {
+        console.error('Error subscribing to user doc:', error);
+        callback(null);
+      }
+    );
+  },
+
   // Subscribe to all verification requests (real-time)
   subscribeToVerificationRequests: (callback) => {
     const q = query(
@@ -58,13 +156,15 @@ export const verificationService = {
   },
 
   // Approve provider/customer
-  approveRequest: async (requestId, adminNotes = '') => {
+  approveRequest: async (requestId, adminNotes = '', userIdOverride = null) => {
     try {
       const requestRef = doc(db, 'verificationRequests', requestId);
       await updateDoc(requestRef, {
         status: 'approved',
         adminNotes: adminNotes,
         approvedAt: serverTimestamp(),
+        rejectedAt: null,
+        rejectionReason: null,
         updatedAt: serverTimestamp(),
       });
 
@@ -72,16 +172,20 @@ export const verificationService = {
       const requestDoc = await getDoc(requestRef);
       if (requestDoc.exists()) {
         const data = requestDoc.data();
-        if (data.userId) {
-          const userRef = doc(db, 'users', data.userId);
-          await updateDoc(userRef, {
-            accountStatus: 'approved',
-            updatedAt: serverTimestamp(),
-          });
-        }
+        const userId =
+          userIdOverride ||
+          (await verificationService.resolveUserIdFromRequestData(data, requestId));
+
+        const userResult = await verificationService.updateUserAccountStatus(userId, 'approved');
+        return {
+          success: true,
+          userId,
+          userUpdateSuccess: userResult.success,
+          userUpdateError: userResult.success ? null : userResult.error,
+        };
       }
 
-      return { success: true };
+      return { success: true, userId: null, userUpdateSuccess: false, userUpdateError: 'Request not found' };
     } catch (error) {
       console.error('Error approving request:', error);
       return { success: false, error: error.message };
@@ -89,7 +193,7 @@ export const verificationService = {
   },
 
   // Reject provider/customer
-  rejectRequest: async (requestId, rejectionReason, adminNotes = '') => {
+  rejectRequest: async (requestId, rejectionReason, adminNotes = '', userIdOverride = null) => {
     try {
       const requestRef = doc(db, 'verificationRequests', requestId);
       await updateDoc(requestRef, {
@@ -97,6 +201,7 @@ export const verificationService = {
         rejectionReason: rejectionReason,
         adminNotes: adminNotes,
         rejectedAt: serverTimestamp(),
+        approvedAt: null,
         updatedAt: serverTimestamp(),
       });
 
@@ -104,18 +209,57 @@ export const verificationService = {
       const requestDoc = await getDoc(requestRef);
       if (requestDoc.exists()) {
         const data = requestDoc.data();
-        if (data.userId) {
-          const userRef = doc(db, 'users', data.userId);
-          await updateDoc(userRef, {
-            accountStatus: 'rejected',
-            updatedAt: serverTimestamp(),
-          });
-        }
+        const userId =
+          userIdOverride ||
+          (await verificationService.resolveUserIdFromRequestData(data, requestId));
+
+        const userResult = await verificationService.updateUserAccountStatus(userId, 'rejected');
+        return {
+          success: true,
+          userId,
+          userUpdateSuccess: userResult.success,
+          userUpdateError: userResult.success ? null : userResult.error,
+        };
       }
 
-      return { success: true };
+      return { success: true, userId: null, userUpdateSuccess: false, userUpdateError: 'Request not found' };
     } catch (error) {
       console.error('Error rejecting request:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  setPendingRequest: async (requestId, adminNotes = '', userIdOverride = null) => {
+    try {
+      const requestRef = doc(db, 'verificationRequests', requestId);
+      await updateDoc(requestRef, {
+        status: 'pending',
+        adminNotes: adminNotes,
+        rejectionReason: null,
+        approvedAt: null,
+        rejectedAt: null,
+        updatedAt: serverTimestamp(),
+      });
+
+      const requestDoc = await getDoc(requestRef);
+      if (requestDoc.exists()) {
+        const data = requestDoc.data();
+        const userId =
+          userIdOverride ||
+          (await verificationService.resolveUserIdFromRequestData(data, requestId));
+
+        const userResult = await verificationService.updateUserAccountStatus(userId, 'pending_approval');
+        return {
+          success: true,
+          userId,
+          userUpdateSuccess: userResult.success,
+          userUpdateError: userResult.success ? null : userResult.error,
+        };
+      }
+
+      return { success: true, userId: null, userUpdateSuccess: false, userUpdateError: 'Request not found' };
+    } catch (error) {
+      console.error('Error setting request to pending:', error);
       return { success: false, error: error.message };
     }
   },

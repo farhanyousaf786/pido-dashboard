@@ -1,29 +1,148 @@
-import React, { useState } from 'react';
-import { ArrowLeft, CheckCircle, XCircle, User, Briefcase, Calendar, Mail, Phone, FileText, AlertTriangle } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ArrowLeft, CheckCircle, XCircle, User, Briefcase, FileText, AlertTriangle, Clock } from 'lucide-react';
+import { verificationService } from '../../../core/services/verificationService';
 
 export default function VerificationDetail({ request, onBack, onApprove, onReject }) {
-  const [adminNotes, setAdminNotes] = useState(request?.adminNotes || '');
+  const [liveRequest, setLiveRequest] = useState(request || null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [actionError, setActionError] = useState(null);
+  const [selectedStatus, setSelectedStatus] = useState('');
+  const [resolvedUserId, setResolvedUserId] = useState(null);
 
-  const status = request?.status || 'pending';
+  const [imageModal, setImageModal] = useState({ open: false, title: '', src: '' });
+
+  const [resolvedUser, setResolvedUser] = useState(null);
+
+  const displayedRequest = liveRequest || request;
+  const requestStatus = displayedRequest?.status || 'pending';
+  const isProvider = displayedRequest?.userType === 'serviceProvider';
+  const isCustomer = !isProvider;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      if (!displayedRequest?.id) {
+        setResolvedUserId(null);
+        return;
+      }
+
+      try {
+        const userId = await verificationService.resolveUserIdFromRequestData(displayedRequest, displayedRequest.id);
+        if (!cancelled) setResolvedUserId(userId || null);
+      } catch {
+        if (!cancelled) setResolvedUserId(null);
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [displayedRequest]);
+
+  useEffect(() => {
+    if (!request?.id) return;
+    const unsub = verificationService.subscribeToVerificationRequestDoc(request.id, (doc) => {
+      if (doc) setLiveRequest(doc);
+    });
+    return () => {
+      if (unsub) unsub();
+    };
+  }, [request?.id]);
+
+  useEffect(() => {
+    let unsubscribe = null;
+    let cancelled = false;
+
+    const run = async () => {
+      if (!isCustomer) {
+        setResolvedUser(null);
+        return;
+      }
+
+      const userId = await verificationService.resolveUserIdFromRequestData(displayedRequest, displayedRequest?.id);
+      if (cancelled) return;
+
+      unsubscribe = verificationService.subscribeToUserDoc(userId, (user) => {
+        setResolvedUser(user);
+      });
+    };
+
+    run();
+
+    return () => {
+      cancelled = true;
+      if (unsubscribe) unsubscribe();
+    };
+  }, [isCustomer, displayedRequest]);
+
+  const status = useMemo(() => {
+    if (!isCustomer) return requestStatus;
+    return 'approved';
+  }, [isCustomer, requestStatus]);
+
+  useEffect(() => {
+    setSelectedStatus(status.toLowerCase());
+  }, [status]);
+
   const isPending = status.toLowerCase() === 'pending';
-  const isProvider = request?.userType === 'serviceProvider';
+
+  const documents = displayedRequest?.documents || {};
+  const licenseUrl = documents.licenseUrl || displayedRequest?.licenseImageUrl || displayedRequest?.licenseUrl || '';
+  const selfieUrl = documents.selfieUrl || displayedRequest?.selfieUrl || '';
+  const certificateUrl = documents.certificateUrl || displayedRequest?.certificateUrl || '';
+
+  const adminNotes = displayedRequest?.adminNotes || '';
+
+  const handleSetPending = async () => {
+    setProcessing(true);
+    setActionError(null);
+    const res = await verificationService.setPendingRequest(displayedRequest.id, adminNotes);
+    setProcessing(false);
+    if (!res.success) setActionError(res.error || 'Failed to set status to pending');
+  };
+
+  const handleUpdateStatus = async () => {
+    if (!selectedStatus) return;
+    if (selectedStatus === status.toLowerCase()) return;
+
+    if (selectedStatus === 'approved') {
+      await handleApprove();
+      return;
+    }
+    if (selectedStatus === 'rejected') {
+      setShowRejectModal(true);
+      return;
+    }
+    await handleSetPending();
+  };
 
   const handleApprove = async () => {
     setProcessing(true);
-    const result = await onApprove(request.id, adminNotes);
+    setActionError(null);
+
+    const result = isProvider
+      ? await verificationService.approveRequest(displayedRequest.id, adminNotes)
+      : await onApprove(displayedRequest.id, adminNotes);
     setProcessing(false);
+    if (result && result.success === false) setActionError(result.error || 'Failed to approve');
   };
 
   const handleReject = async () => {
     if (!rejectionReason.trim()) return;
     setProcessing(true);
-    const result = await onReject(request.id, rejectionReason, adminNotes);
+    setActionError(null);
+    const result = isProvider
+      ? await verificationService.rejectRequest(displayedRequest.id, rejectionReason, adminNotes)
+      : await onReject(displayedRequest.id, rejectionReason, adminNotes);
     setProcessing(false);
     if (result.success) {
       setShowRejectModal(false);
+    } else {
+      setActionError(result.error || 'Failed to reject');
     }
   };
 
@@ -74,154 +193,144 @@ export default function VerificationDetail({ request, onBack, onApprove, onRejec
             <div className="info-grid">
               <div className="info-row">
                 <span className="info-label">Name</span>
-                <span className="info-value">{request?.providerName || request?.customerName || 'N/A'}</span>
+                <span className="info-value">{displayedRequest?.providerName || displayedRequest?.customerName || 'N/A'}</span>
               </div>
               <div className="info-row">
                 <span className="info-label">User ID</span>
-                <span className="info-value monospace">{request?.userId || 'N/A'}</span>
+                <span className="info-value monospace">{resolvedUserId || displayedRequest?.userId || displayedRequest?.uid || 'N/A'}</span>
               </div>
               <div className="info-row">
                 <span className="info-label">Email</span>
-                <span className="info-value">{request?.email || 'N/A'}</span>
+                <span className="info-value">{displayedRequest?.email || 'N/A'}</span>
               </div>
               <div className="info-row">
                 <span className="info-label">Phone</span>
-                <span className="info-value">{request?.phoneNumber || 'N/A'}</span>
+                <span className="info-value">{displayedRequest?.phoneNumber || 'N/A'}</span>
               </div>
               <div className="info-row">
                 <span className="info-label">Submitted</span>
-                <span className="info-value">{formatDate(request?.submittedAt)}</span>
+                <span className="info-value">{formatDate(displayedRequest?.submittedAt)}</span>
               </div>
-              {request?.licenseNumber && (
+              {displayedRequest?.licenseNumber && (
                 <div className="info-row">
                   <span className="info-label">License Number</span>
-                  <span className="info-value">{request.licenseNumber}</span>
+                  <span className="info-value">{displayedRequest.licenseNumber}</span>
                 </div>
               )}
-              {request?.licenseExpiryDate && (
+              {displayedRequest?.licenseExpiryDate && (
                 <div className="info-row">
                   <span className="info-label">License Expiry</span>
-                  <span className="info-value">{request.licenseExpiryDate}</span>
+                  <span className="info-value">{displayedRequest.licenseExpiryDate}</span>
                 </div>
               )}
             </div>
           </div>
 
           {/* Documents */}
-          {request?.documents && (
+          {(licenseUrl || selfieUrl || certificateUrl) && (
             <div className="detail-section">
               <h3 className="section-title"><FileText size={18} /> Documents</h3>
               <div className="documents-grid">
-                {request.documents.licenseUrl && (
-                  <div className="document-item">
+                {licenseUrl && (
+                  <button
+                    type="button"
+                    className="document-item document-preview"
+                    onClick={() => setImageModal({ open: true, title: 'License', src: licenseUrl })}
+                  >
                     <span className="doc-label">License</span>
-                    <a 
-                      href={request.documents.licenseUrl} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="doc-link"
-                    >
-                      View Document
-                    </a>
-                  </div>
+                    <img className="doc-image" src={licenseUrl} alt="License" loading="lazy" />
+                  </button>
                 )}
-                {request.documents.selfieUrl && (
-                  <div className="document-item">
+                {selfieUrl && (
+                  <button
+                    type="button"
+                    className="document-item document-preview"
+                    onClick={() => setImageModal({ open: true, title: 'Selfie', src: selfieUrl })}
+                  >
                     <span className="doc-label">Selfie</span>
-                    <a 
-                      href={request.documents.selfieUrl} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="doc-link"
-                    >
-                      View Photo
-                    </a>
-                  </div>
+                    <img className="doc-image" src={selfieUrl} alt="Selfie" loading="lazy" />
+                  </button>
                 )}
-                {request.documents.certificateUrl && (
-                  <div className="document-item">
+                {certificateUrl && (
+                  <button
+                    type="button"
+                    className="document-item document-preview"
+                    onClick={() => setImageModal({ open: true, title: 'Certificate', src: certificateUrl })}
+                  >
                     <span className="doc-label">Certificate</span>
-                    <a 
-                      href={request.documents.certificateUrl} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="doc-link"
-                    >
-                      View Certificate
-                    </a>
-                  </div>
+                    <img className="doc-image" src={certificateUrl} alt="Certificate" loading="lazy" />
+                  </button>
                 )}
               </div>
             </div>
           )}
 
-          {/* Admin Notes */}
-          <div className="detail-section">
-            <h3 className="section-title">Admin Notes</h3>
-            <textarea
-              className="admin-notes-textarea"
-              value={adminNotes}
-              onChange={(e) => setAdminNotes(e.target.value)}
-              placeholder="Add notes about this verification..."
-              rows={4}
-            />
-          </div>
         </div>
 
         {/* Right Column - Actions */}
         <div className="detail-right">
-          {isPending ? (
-            <div className="action-section">
-              <h3>Review Decision</h3>
+          {!isCustomer && (
+            <div className={`action-section ${isPending ? '' : 'resolved'}`}>
+              <h3>Status Actions</h3>
               <p className="action-description">
-                Review the submitted documents and information before making a decision.
+                You can change status at any time. This updates both verification request and user account status.
               </p>
-              
-              <div className="action-buttons">
-                <button
-                  className="approve-btn"
-                  onClick={handleApprove}
-                  disabled={processing}
-                >
-                  <CheckCircle size={18} />
-                  {processing ? 'Processing...' : 'Approve'}
-                </button>
-                <button
-                  className="reject-btn"
-                  onClick={() => setShowRejectModal(true)}
-                  disabled={processing}
-                >
-                  <XCircle size={18} />
-                  Reject
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="action-section resolved">
-              <h3>Decision Made</h3>
-              <div className={`decision-badge ${status.toLowerCase()}`}>
-                {status.toLowerCase() === 'approved' ? (
-                  <><CheckCircle size={20} /> Approved</>
-                ) : (
-                  <><XCircle size={20} /> Rejected</>
-                )}
-              </div>
-              {request?.rejectionReason && (
-                <div className="rejection-reason">
-                  <span className="reason-label">Reason:</span>
-                  <p>{request.rejectionReason}</p>
+
+              {actionError && (
+                <div className="verifications-error">
+                  <AlertTriangle size={18} />
+                  <span>{actionError}</span>
                 </div>
               )}
-              {request?.approvedAt && (
-                <p className="decision-date">
-                  Approved on {formatDate(request.approvedAt)}
-                </p>
-              )}
-              {request?.rejectedAt && (
-                <p className="decision-date">
-                  Rejected on {formatDate(request.rejectedAt)}
-                </p>
-              )}
+
+              <div className="status-dropdown-row">
+                <select
+                  className="status-select"
+                  value={selectedStatus}
+                  onChange={(e) => setSelectedStatus(e.target.value)}
+                  disabled={processing}
+                >
+                  <option value="pending">Pending</option>
+                  <option value="approved">Approved</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+
+                <button
+                  className="update-status-btn"
+                  onClick={handleUpdateStatus}
+                  disabled={processing || !selectedStatus || selectedStatus === status.toLowerCase()}
+                >
+                  {processing ? 'Updating...' : 'Update Status'}
+                </button>
+              </div>
+
+              <div className="action-section-meta">
+                {!!displayedRequest?.rejectionReason && (
+                  <div className="rejection-reason">
+                    <span className="reason-label">Reason:</span>
+                    <p>{displayedRequest.rejectionReason}</p>
+                  </div>
+                )}
+                {!!displayedRequest?.approvedAt && (
+                  <p className="decision-date">Approved on {formatDate(displayedRequest.approvedAt)}</p>
+                )}
+                {!!displayedRequest?.rejectedAt && (
+                  <p className="decision-date">Rejected on {formatDate(displayedRequest.rejectedAt)}</p>
+                )}
+
+                <div className="current-status-tag">
+                  <span className="reason-label">Current Status</span>
+                  <div className={`decision-badge ${status.toLowerCase()}`}>
+                    {status.toLowerCase() === 'approved' ? (
+                      <><CheckCircle size={18} /> Approved</>
+                    ) : status.toLowerCase() === 'rejected' ? (
+                      <><XCircle size={18} /> Rejected</>
+                    ) : (
+                      <><Clock size={18} /> Pending</>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -260,6 +369,24 @@ export default function VerificationDetail({ request, onBack, onApprove, onRejec
                 disabled={!rejectionReason.trim() || processing}
               >
                 {processing ? 'Processing...' : 'Confirm Reject'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {imageModal.open && (
+        <div className="modal-overlay" onClick={() => setImageModal({ open: false, title: '', src: '' })}>
+          <div className="modal-content image-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>{imageModal.title}</h3>
+            </div>
+            <div className="modal-body">
+              <img className="doc-image-full" src={imageModal.src} alt={imageModal.title} />
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setImageModal({ open: false, title: '', src: '' })}>
+                Close
               </button>
             </div>
           </div>

@@ -1,9 +1,10 @@
 import React from 'react';
-import { LayoutDashboard, Users, Gift, Settings, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, Users, Gift, Settings, ShieldCheck, Bell } from 'lucide-react';
 
 const NAV_ITEMS = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { key: 'verifications', label: 'Verifications', icon: ShieldCheck },
+  { key: 'notifications', label: 'Notifications', icon: Bell },
   { key: 'users', label: 'Users', icon: Users },
   { key: 'referral', label: 'Referral', icon: Gift },
   { key: 'adminSettings', label: 'Admin Settings', icon: Settings },

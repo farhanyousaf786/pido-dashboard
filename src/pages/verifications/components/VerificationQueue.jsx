@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { CheckCircle, XCircle, Clock, ExternalLink, Trash2, AlertTriangle } from 'lucide-react';
 
-export default function VerificationQueue({ requests, loading, onView }) {
+export default function VerificationQueue({ requests, loading, onView, statusOverrides = {} }) {
   const [selected, setSelected] = useState([]);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
 
@@ -107,7 +107,6 @@ export default function VerificationQueue({ requests, loading, onView }) {
                     onChange={handleSelectAll}
                   />
                 </th>
-                <th>ID</th>
                 <th>Name</th>
                 <th>Type</th>
                 <th>Contact</th>
@@ -119,7 +118,7 @@ export default function VerificationQueue({ requests, loading, onView }) {
             <tbody>
               {requests.map((request) => {
                 const isSelected = selected.includes(request.id);
-                const status = request.status || 'pending';
+                const status = statusOverrides[request.id] || request.status || 'pending';
                 const contactInfo = request.email || request.phoneNumber || 'N/A';
                 
                 return (
@@ -134,7 +133,6 @@ export default function VerificationQueue({ requests, loading, onView }) {
                         onChange={() => handleSelectOne(request.id)}
                       />
                     </td>
-                    <td className="id-cell">{request.id}</td>
                     <td className="name-cell">{request.providerName || request.customerName || 'N/A'}</td>
                     <td>{getUserTypeBadge(request.userType)}</td>
                     <td className="contact-cell">{contactInfo}</td>

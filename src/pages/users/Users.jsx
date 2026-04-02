@@ -10,7 +10,7 @@ import UserRow from './components/UserRow.jsx';
 import UserFilters from './components/UserFilters.jsx';
 import UserStats from './components/UserStats.jsx';
 
-export default function Users({ onUserClick }) {
+export default function Users({ onUserClick, initialFilters = null }) {
   const [users, setUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [displayedUsers, setDisplayedUsers] = useState([]);
@@ -22,6 +22,13 @@ export default function Users({ onUserClick }) {
 
   const USERS_PER_PAGE = 20;
   const LOAD_MORE_COUNT = 20;
+
+  useEffect(() => {
+    if (!initialFilters) return;
+    setFilters(initialFilters);
+    setSearchQuery('');
+    setVisibleCount(20);
+  }, [initialFilters]);
 
   // Subscribe to real-time users updates
   useEffect(() => {
