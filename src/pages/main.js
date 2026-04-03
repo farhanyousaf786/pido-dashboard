@@ -5,6 +5,8 @@ import Sidebar from '../components/sidebar/Sidebar';
 import DashboardPage from './dashboard/Dashboard';
 import UsersPage from './users/Users';
 import UserDetailPage from './users/components/UserDetail.jsx';
+import BookingsPage from './bookings/Bookings.jsx';
+import BookingDetailPage from './bookings/BookingDetail.jsx';
 import VerificationsPage from './verifications/Verifications';
 import NotificationsPage from './notifications/Notifications';
 import ReferralPage from './referral/Referral';
@@ -16,6 +18,8 @@ const PAGES = {
   dashboard: 'dashboard',
   users: 'users',
   userDetail: 'userDetail',
+  bookings: 'bookings',
+  bookingDetail: 'bookingDetail',
   verifications: 'verifications',
   notifications: 'notifications',
   referral: 'referral',
@@ -28,11 +32,15 @@ function Main() {
   const [activePage, setActivePage] = useState(PAGES.dashboard);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedBooking, setSelectedBooking] = useState(null);
   const [usersInitialFilters, setUsersInitialFilters] = useState(null);
 
   const handleNavigate = (pageKey, user = null) => {
     if (pageKey === PAGES.userDetail && user) {
       setSelectedUser(user);
+    }
+    if (pageKey === PAGES.bookingDetail && user) {
+      setSelectedBooking(user);
     }
     if (pageKey === PAGES.users) {
       setUsersInitialFilters(null);
@@ -58,6 +66,19 @@ function Main() {
         );
       case PAGES.userDetail:
         return <UserDetailPage user={selectedUser} onBack={() => handleNavigate(PAGES.users)} />;
+      case PAGES.bookings:
+        return (
+          <BookingsPage
+            onBookingClick={(booking) => handleNavigate(PAGES.bookingDetail, booking)}
+          />
+        );
+      case PAGES.bookingDetail:
+        return (
+          <BookingDetailPage
+            bookingId={selectedBooking?.bookingId}
+            onBack={() => handleNavigate(PAGES.bookings)}
+          />
+        );
       case PAGES.verifications:
         return <VerificationsPage />;
       case PAGES.notifications:
