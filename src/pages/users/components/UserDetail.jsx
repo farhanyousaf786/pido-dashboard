@@ -1,14 +1,61 @@
-import React, { useEffect, useState } from 'react';
-import { ArrowLeft, User, Phone, MapPin, Calendar, Shield, CheckCircle, XCircle, Clock, Mail, Globe, Info } from 'lucide-react';
+import React, { useState } from 'react';
+import { ArrowLeft, User, Phone, MapPin, Calendar, Shield, CheckCircle, XCircle, Clock, Globe, Info, Bell } from 'lucide-react';
 import { UserHelpers } from '../../../core/models/User.js';
+import { notificationService } from '../../../core/services/notificationService.js';
 
 export default function UserDetail({ user, onBack }) {
   const [loading, setLoading] = useState(false);
+  const [pushForm, setPushForm] = useState({
+    title: '',
+    body: '',
+  });
+  const [pushResult, setPushResult] = useState(null);
 
   const isOnline = user?.isOnline === true;
   const isProvider = UserHelpers.isServiceProvider(user);
   const isCustomer = UserHelpers.isCustomer(user);
   const displayName = UserHelpers.displayName(user) || 'Unknown User';
+  const hasFcm = !!(user?.fcmToken && String(user.fcmToken).trim());
+
+  const handlePushChange = (e) => {
+    const { name, value } = e.target;
+    setPushForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSendPush = async () => {
+    try {
+      setLoading(true);
+      setPushResult(null);
+
+      if (!pushForm.title || !pushForm.body) {
+        setPushResult({ success: false, message: 'Title and message are required' });
+        return;
+      }
+
+      const payload = {
+        userIds: [user.uid],
+        fcmTokens: hasFcm ? [String(user.fcmToken).trim()] : undefined,
+        title: pushForm.title,
+        body: pushForm.body,
+      };
+
+      const res = await notificationService.sendUsersNotification(payload);
+      if (res?.success) {
+        setPushResult({ success: true, message: res.message || 'Notification sent' });
+        setPushForm((prev) => ({
+          ...prev,
+          title: '',
+          body: '',
+        }));
+      } else {
+        setPushResult({ success: false, message: res?.message || 'Failed to send', error: res?.error });
+      }
+    } catch (e) {
+      setPushResult({ success: false, message: 'Failed to send', error: e?.message });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getStatusBadge = () => {
     switch (user?.accountStatus) {
@@ -61,6 +108,9 @@ export default function UserDetail({ user, onBack }) {
               {getStatusBadge()}
               <span className={`online-badge ${isOnline ? 'online' : 'offline'}`}>
                 <span className="online-dot" /> {isOnline ? 'Online' : 'Offline'}
+              </span>
+              <span className={`fcm-badge ${hasFcm ? 'has' : 'missing'}`}>
+                <Bell size={14} /> Can Send {hasFcm ? 'Yes' : 'No'}
               </span>
             </div>
           </div>
@@ -182,6 +232,60 @@ export default function UserDetail({ user, onBack }) {
               </div>
             </div>
           )}
+
+          <div className="detail-section">
+            <h3 className="section-title"><Bell size={16} /> Push Notification</h3>
+            <div className="push-notification">
+              <div className="push-form">
+                <div className="push-row">
+                  <div className="push-field">
+                    <span className="detail-label">Title</span>
+                    <input
+                      className="push-input"
+                      type="text"
+                      name="title"
+                      value={pushForm.title}
+                      onChange={handlePushChange}
+                      placeholder="Enter title"
+                    />
+                  </div>
+                </div>
+
+                <div className="push-row">
+                  <div className="push-field">
+                    <span className="detail-label">Message</span>
+                    <textarea
+                      className="push-textarea"
+                      name="body"
+                      value={pushForm.body}
+                      onChange={handlePushChange}
+                      placeholder="Enter message"
+                      rows={3}
+                    />
+                  </div>
+                </div>
+
+                <div className="push-actions">
+                  <button
+                    type="button"
+                    className="push-send-btn"
+                    onClick={handleSendPush}
+                    disabled={loading || !pushForm.title || !pushForm.body}
+                  >
+                    {loading ? 'Sending...' : 'Send Push'}
+                  </button>
+                </div>
+
+                {pushResult && (
+                  <div className={`push-result ${pushResult.success ? 'success' : 'error'}`}>
+                    <div className="push-result-title">{pushResult.success ? 'Sent' : 'Failed'}</div>
+                    <div className="push-result-message">{pushResult.message}</div>
+                    {!!pushResult.error && <div className="push-result-error">Error: {pushResult.error}</div>}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

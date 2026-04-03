@@ -37,14 +37,76 @@ export default function Dashboard({ onNavigateToUsers }) {
   const [error, setError] = useState(null);
   const [revenueType, setRevenueType] = useState('app'); // 'overall' | 'app' | 'provider'
 
+  const [dateFilter, setDateFilter] = useState('all');
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
+
+  const getDateRange = () => {
+    const now = new Date();
+    const startOfDay = (d) => {
+      const x = new Date(d);
+      x.setHours(0, 0, 0, 0);
+      return x;
+    };
+    const addDays = (d, days) => {
+      const x = new Date(d);
+      x.setDate(x.getDate() + days);
+      return x;
+    };
+
+    if (dateFilter === 'all') return null;
+
+    if (dateFilter === 'today') {
+      const start = startOfDay(now);
+      const end = addDays(start, 1);
+      return { start, end };
+    }
+
+    if (dateFilter === 'yesterday') {
+      const end = startOfDay(now);
+      const start = addDays(end, -1);
+      return { start, end };
+    }
+
+    if (dateFilter === 'week') {
+      const end = addDays(startOfDay(now), 1);
+      const start = addDays(end, -7);
+      return { start, end };
+    }
+
+    if (dateFilter === 'range') {
+      if (!customStart || !customEnd) return null;
+      const start = startOfDay(new Date(`${customStart}T00:00:00`));
+      const endInclusive = startOfDay(new Date(`${customEnd}T00:00:00`));
+      const end = addDays(endInclusive, 1);
+      return { start, end };
+    }
+
+    return null;
+  };
+
+  const dateRange = getDateRange();
+
+  const getDateLabel = () => {
+    if (dateFilter === 'all') return 'All';
+    if (dateFilter === 'today') return 'Today';
+    if (dateFilter === 'yesterday') return 'Yesterday';
+    if (dateFilter === 'week') return 'Last 7 Days';
+    if (dateFilter === 'range') {
+      if (customStart && customEnd) return `${customStart} to ${customEnd}`;
+      return 'Custom Range';
+    }
+    return 'All';
+  };
+
   useEffect(() => {
     async function fetchData() {
       try {
         setLoading(true);
         const [users, bookings, chart] = await Promise.all([
           getUserStats(),
-          getBookingStats(),
-          getBookingsChartData(revenueType),
+          getBookingStats(dateRange),
+          getBookingsChartData(revenueType, dateRange),
         ]);
         setUserStats(users);
         setBookingStats(bookings);
@@ -58,7 +120,7 @@ export default function Dashboard({ onNavigateToUsers }) {
     }
 
     fetchData();
-  }, [revenueType]);
+  }, [revenueType, dateFilter, customStart, customEnd]);
 
   if (error) {
     return <ErrorState message={error} onRetry={() => window.location.reload()} />;
@@ -148,19 +210,54 @@ export default function Dashboard({ onNavigateToUsers }) {
         <div className="section-header-with-filter">
           <h2 className="section-title">
             <TrendingUp size={20} />
-            Trends (Last 30 Days)
+            Trends ({dateFilter === 'all' ? 'Last 30 Days' : getDateLabel()})
           </h2>
-          <div className="revenue-filter">
-            <label>Revenue View:</label>
-            <select 
-              value={revenueType} 
-              onChange={(e) => setRevenueType(e.target.value)}
-              className="revenue-select"
-            >
-              <option value="app">App Revenue (15%)</option>
-              <option value="overall">Total Revenue</option>
-              <option value="provider">Provider Payout</option>
-            </select>
+          <div className="dashboard-filters">
+            <div className="date-filter">
+              <label>Date:</label>
+              <select
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="revenue-select"
+              >
+                <option value="all">All</option>
+                <option value="today">Today</option>
+                <option value="yesterday">Yesterday</option>
+                <option value="week">Last 7 Days</option>
+                <option value="range">Custom Range</option>
+              </select>
+            </div>
+
+            {dateFilter === 'range' && (
+              <div className="date-range">
+                <input
+                  type="date"
+                  value={customStart}
+                  onChange={(e) => setCustomStart(e.target.value)}
+                  className="date-input"
+                />
+                <span className="date-sep">to</span>
+                <input
+                  type="date"
+                  value={customEnd}
+                  onChange={(e) => setCustomEnd(e.target.value)}
+                  className="date-input"
+                />
+              </div>
+            )}
+
+            <div className="revenue-filter">
+              <label>Revenue View:</label>
+              <select
+                value={revenueType}
+                onChange={(e) => setRevenueType(e.target.value)}
+                className="revenue-select"
+              >
+                <option value="app">App Revenue (15%)</option>
+                <option value="overall">Total Revenue</option>
+                <option value="provider">Provider Payout</option>
+              </select>
+            </div>
           </div>
         </div>
         <div className="charts-grid">
@@ -177,7 +274,7 @@ export default function Dashboard({ onNavigateToUsers }) {
       <div className="dashboard-section">
         <h2 className="section-title">
           <Calendar size={20} />
-          Booking Statistics
+          Booking Statistics ({getDateLabel()})
         </h2>
         <div className="stats-grid">
           {loading ? (
@@ -193,7 +290,7 @@ export default function Dashboard({ onNavigateToUsers }) {
               <StatCard
                 title="Total Bookings"
                 value={bookingStats?.totalBookings || 0}
-                subtitle="All time bookings"
+                subtitle={dateFilter === 'all' ? 'All time bookings' : 'Filtered bookings'}
                 icon={Calendar}
                 color="blue"
               />

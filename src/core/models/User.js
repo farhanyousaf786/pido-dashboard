@@ -41,6 +41,9 @@ export function createUserModel(data = {}) {
     isOnline: data.isOnline ?? false,
     lastSeen: data.lastSeen ?? null,
     activeBookingId: data.activeBookingId ?? null,
+
+    // Push notifications
+    fcmToken: data.fcmToken ?? null,
   };
 }
 
@@ -77,6 +80,8 @@ export function userFromFirestore(doc) {
     isOnline: data?.isOnline ?? false,
     lastSeen: parseTimestamp(data?.lastSeen),
     activeBookingId: data?.activeBookingId ?? null,
+
+    fcmToken: data?.fcmToken ?? null,
   });
 }
 
@@ -109,6 +114,7 @@ export function userToFirestore(user) {
   if (user.isOnline) result.isOnline = user.isOnline;
   if (user.lastSeen) result.lastSeen = user.lastSeen;
   if (user.activeBookingId) result.activeBookingId = user.activeBookingId;
+  if (user.fcmToken) result.fcmToken = user.fcmToken;
   
   return result;
 }

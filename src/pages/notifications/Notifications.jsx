@@ -27,9 +27,15 @@ export default function Notifications() {
     data: '',
     image: '',
     topic: 'Pido-all',
-    route: '',
-    product_id: '',
-    order_id: '',
+    action: 'GENERAL',
+    bookingId: '',
+    providerId: '',
+    customerId: '',
+    conversationId: '',
+    promotionId: '',
+    ticketId: '',
+    transactionId: '',
+    notificationId: '',
   });
   const [result, setResult] = useState(null);
 
@@ -88,16 +94,19 @@ export default function Notifications() {
   const buildNotificationData = () => {
     const data = {};
 
-    if (formData.route) data.route = formData.route;
+    // Main routing payload (flat keys for FCM data)
+    if (formData.action) data.action = formData.action;
 
-    if (formData.route === '/product-detail' && formData.product_id) {
-      data.product_id = formData.product_id;
-    }
+    if (formData.bookingId) data.bookingId = formData.bookingId;
+    if (formData.providerId) data.providerId = formData.providerId;
+    if (formData.customerId) data.customerId = formData.customerId;
+    if (formData.conversationId) data.conversationId = formData.conversationId;
+    if (formData.promotionId) data.promotionId = formData.promotionId;
+    if (formData.ticketId) data.ticketId = formData.ticketId;
+    if (formData.transactionId) data.transactionId = formData.transactionId;
+    if (formData.notificationId) data.notificationId = formData.notificationId;
 
-    if (formData.route === '/order-details' && formData.order_id) {
-      data.order_id = formData.order_id;
-    }
-
+    // Optional custom JSON data
     if (formData.data) {
       try {
         const custom = JSON.parse(formData.data);
@@ -164,9 +173,15 @@ export default function Notifications() {
           data: '',
           image: '',
           topic: 'Pido-all',
-          route: '',
-          product_id: '',
-          order_id: '',
+          action: 'GENERAL',
+          bookingId: '',
+          providerId: '',
+          customerId: '',
+          conversationId: '',
+          promotionId: '',
+          ticketId: '',
+          transactionId: '',
+          notificationId: '',
         });
         setSelectedUsers([]);
         setSearchTerm('');
@@ -330,7 +345,7 @@ export default function Notifications() {
                   )}
 
                   {searchTerm && filteredUsers.length === 0 && (
-                    <div className="dropdown-empty">No customers found</div>
+                    <div className="dropdown-empty">No users found</div>
                   )}
                 </div>
 
@@ -400,68 +415,120 @@ export default function Notifications() {
               />
             </div>
 
-            <div className="form-group">
-              <label>Image URL (Optional)</label>
-              <input
-                type="url"
-                name="image"
-                value={formData.image}
-                onChange={handleInputChange}
-                placeholder="https://example.com/image.jpg"
-              />
-            </div>
+            {false && (
+              <div className="form-group">
+                <label>Image URL (Optional)</label>
+                <input
+                  type="url"
+                  name="image"
+                  value={formData.image}
+                  onChange={handleInputChange}
+                  placeholder="https://example.com/image.jpg"
+                />
+              </div>
+            )}
 
-            <div className="form-group">
-              <label>Route (Optional)</label>
+            {/* <div className="form-group">
+              <label>Action (Tap Routing)</label>
               <select
-                name="route"
-                value={formData.route || ''}
+                name="action"
+                value={formData.action || 'GENERAL'}
                 onChange={handleInputChange}
                 className="route-select"
               >
-                <option value="">Default (Open App)</option>
-                <option value="/bottom-ecom">Home/Shop</option>
-                <option value="/bottom-prize">Prize</option>
-                <option value="/prize-draw">Draws</option>
-                <option value="/shop">Shop Page</option>
-                <option value="/product-detail">Product Details</option>
-                <option value="/ecom-cart">Shopping Cart</option>
-                <option value="/ecom-favorites">Favorites</option>
-                <option value="/orders">Orders List</option>
-                <option value="/order-details">Order Details</option>
-                <option value="/account">Profile/Account</option>
-                <option value="/settings">Settings</option>
+                <option value="GENERAL">Default (Notification detail)</option>
+                <option value="BOOKING_CREATED">Booking Created</option>
+                <option value="BOOKING_CONFIRMED">Booking Confirmed</option>
+                <option value="BOOKING_CANCELLED">Booking Cancelled</option>
+                <option value="BOOKING_REMINDER">Booking Reminder</option>
+                <option value="PROVIDER_ASSIGNED">Provider Assigned</option>
+                <option value="SERVICE_COMPLETED">Service Completed</option>
+                <option value="PAYMENT_RECEIVED">Payment Received</option>
+                <option value="PAYMENT_FAILED">Payment Failed</option>
+                <option value="CHAT_MESSAGE">Chat Message</option>
+                <option value="PROMOTION">Promotion</option>
+                <option value="REVIEW_REQUEST">Review Request</option>
+                <option value="SUPPORT_REPLY">Support Reply</option>
               </select>
-              <small>Where user goes when they tap the notification (mobile app)</small>
-            </div>
+              <small>Mobile app will navigate based on this action + IDs below</small>
+            </div> */}
 
-            {formData.route === '/product-detail' && (
+            {[
+              'BOOKING_CREATED',
+              'BOOKING_CONFIRMED',
+              'BOOKING_CANCELLED',
+              'BOOKING_REMINDER',
+              'PROVIDER_ASSIGNED',
+              'SERVICE_COMPLETED',
+              'PAYMENT_RECEIVED',
+              'PAYMENT_FAILED',
+              'REVIEW_REQUEST',
+            ].includes(formData.action) && (
               <div className="form-group">
-                <label>Product ID</label>
+                <label>Booking ID</label>
                 <input
                   type="text"
-                  name="product_id"
-                  value={formData.product_id || ''}
+                  name="bookingId"
+                  value={formData.bookingId || ''}
                   onChange={handleInputChange}
-                  placeholder="Enter product ID"
+                  placeholder="Enter bookingId"
                 />
               </div>
             )}
 
-            {formData.route === '/order-details' && (
+            {formData.action === 'CHAT_MESSAGE' && (
               <div className="form-group">
-                <label>Order ID</label>
+                <label>Conversation ID</label>
                 <input
                   type="text"
-                  name="order_id"
-                  value={formData.order_id || ''}
+                  name="conversationId"
+                  value={formData.conversationId || ''}
                   onChange={handleInputChange}
-                  placeholder="Enter order ID"
+                  placeholder="Enter conversationId"
                 />
               </div>
             )}
 
-            <div className="form-group">
+            {formData.action === 'PROMOTION' && (
+              <div className="form-group">
+                <label>Promotion ID</label>
+                <input
+                  type="text"
+                  name="promotionId"
+                  value={formData.promotionId || ''}
+                  onChange={handleInputChange}
+                  placeholder="Enter promotionId"
+                />
+              </div>
+            )}
+
+            {formData.action === 'SUPPORT_REPLY' && (
+              <div className="form-group">
+                <label>Ticket ID</label>
+                <input
+                  type="text"
+                  name="ticketId"
+                  value={formData.ticketId || ''}
+                  onChange={handleInputChange}
+                  placeholder="Enter ticketId"
+                />
+              </div>
+            )}
+{/* 
+            {formData.action === 'GENERAL' && (
+              <div className="form-group">
+                <label>Notification ID (Optional)</label>
+                <input
+                  type="text"
+                  name="notificationId"
+                  value={formData.notificationId || ''}
+                  onChange={handleInputChange}
+                  placeholder="Enter notificationId"
+                />
+              </div>
+            )} */}
+
+            {/* <div className="form-group">
               <label>Data (JSON - Optional)</label>
               <textarea
                 name="data"
@@ -471,7 +538,7 @@ export default function Notifications() {
                 rows={3}
               />
               <small>Optional custom data in JSON format</small>
-            </div>
+            </div> */}
 
             <div className="form-actions">
               <button

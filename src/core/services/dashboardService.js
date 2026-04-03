@@ -17,6 +17,21 @@ const usersRef = collection(db, 'users');
 const bookingsRef = collection(db, 'bookings');
 const adminUsersRef = collection(db, 'adminUsers');
 
+function applyCreatedAtRange(q, dateRange) {
+  if (!dateRange?.start && !dateRange?.end) return q;
+
+  let next = q;
+  if (dateRange?.start) {
+    const startTs = dateRange.start instanceof Timestamp ? dateRange.start : Timestamp.fromDate(dateRange.start);
+    next = query(next, where('createdAt', '>=', startTs));
+  }
+  if (dateRange?.end) {
+    const endTs = dateRange.end instanceof Timestamp ? dateRange.end : Timestamp.fromDate(dateRange.end);
+    next = query(next, where('createdAt', '<', endTs));
+  }
+  return next;
+}
+
 // Get user stats
 export async function getUserStats() {
   try {
@@ -72,40 +87,39 @@ export async function getUserStats() {
 }
 
 // Get booking stats
-export async function getBookingStats() {
+export async function getBookingStats(dateRange) {
   try {
     // Total bookings
-    const totalSnapshot = await getCountFromServer(bookingsRef);
+    const totalSnapshot = await getCountFromServer(applyCreatedAtRange(bookingsRef, dateRange));
     const totalBookings = totalSnapshot.data().count;
 
     // Active bookings (pending or accepted)
-    const activeQuery = query(
-      bookingsRef,
-      where('status', 'in', ['pending', 'accepted'])
+    const activeQuery = applyCreatedAtRange(
+      query(bookingsRef, where('status', 'in', ['pending', 'accepted'])),
+      dateRange
     );
     const activeSnapshot = await getCountFromServer(activeQuery);
     const activeBookings = activeSnapshot.data().count;
 
     // Pending bookings specifically
-    const pendingQuery = query(bookingsRef, where('status', '==', 'pending'));
+    const pendingQuery = applyCreatedAtRange(query(bookingsRef, where('status', '==', 'pending')), dateRange);
     const pendingSnapshot = await getCountFromServer(pendingQuery);
     const pendingBookings = pendingSnapshot.data().count;
 
     // Completed bookings
-    const completedQuery = query(bookingsRef, where('status', '==', 'completed'));
+    const completedQuery = applyCreatedAtRange(query(bookingsRef, where('status', '==', 'completed')), dateRange);
     const completedSnapshot = await getCountFromServer(completedQuery);
     const completedBookings = completedSnapshot.data().count;
 
     // Cancelled bookings
-    const cancelledQuery = query(bookingsRef, where('status', '==', 'cancelled'));
+    const cancelledQuery = applyCreatedAtRange(query(bookingsRef, where('status', '==', 'cancelled')), dateRange);
     const cancelledSnapshot = await getCountFromServer(cancelledQuery);
     const cancelledBookings = cancelledSnapshot.data().count;
 
     // Calculate both overall and app revenue from completed bookings using Booking model
-    const revenueQuery = query(
-      bookingsRef,
-      where('status', '==', 'completed'),
-      where('paymentStatus', '==', 'completed')
+    const revenueQuery = applyCreatedAtRange(
+      query(bookingsRef, where('status', '==', 'completed'), where('paymentStatus', '==', 'completed')),
+      dateRange
     );
     const revenueSnapshot = await getDocs(revenueQuery);
     let totalRevenue = 0;
@@ -145,13 +159,20 @@ export async function getBookingStats() {
 
 // Get bookings data for charts (last 30 days) using Booking model
 // revenueType: 'overall' | 'app' | 'provider'
-export async function getBookingsChartData(revenueType = 'overall') {
+export async function getBookingsChartData(revenueType = 'overall', dateRange) {
   try {
-    const thirtyDaysAgo = Timestamp.fromDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
-    const chartQuery = query(
-      bookingsRef,
-      where('createdAt', '>=', thirtyDaysAgo)
-    );
+    const now = new Date();
+    const effectiveStart = dateRange?.start
+      ? (dateRange.start instanceof Date ? dateRange.start : dateRange.start.toDate())
+      : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const effectiveEnd = dateRange?.end
+      ? (dateRange.end instanceof Date ? dateRange.end : dateRange.end.toDate())
+      : new Date(now.getTime() + 1);
+
+    const chartQuery = applyCreatedAtRange(bookingsRef, {
+      start: effectiveStart,
+      end: effectiveEnd,
+    });
     const snapshot = await getDocs(chartQuery);
 
     // Parse all bookings using model
@@ -159,12 +180,16 @@ export async function getBookingsChartData(revenueType = 'overall') {
 
     // Group by date
     const dailyData = {};
-    const today = new Date();
-    for (let i = 29; i >= 0; i--) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
-      const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const startDate = new Date(effectiveStart);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(effectiveEnd);
+    endDate.setHours(0, 0, 0, 0);
+
+    const cursor = new Date(startDate);
+    while (cursor <= endDate) {
+      const dateStr = cursor.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       dailyData[dateStr] = { date: dateStr, bookings: 0, revenue: 0 };
+      cursor.setDate(cursor.getDate() + 1);
     }
 
     bookings.forEach((booking) => {
