@@ -84,7 +84,11 @@ function Main() {
       case PAGES.notifications:
         return <NotificationsPage />;
       case PAGES.referral:
-        return <ReferralPage />;
+        return (
+          <ReferralPage
+            onOpenBooking={(booking) => handleNavigate(PAGES.bookingDetail, booking)}
+          />
+        );
       case PAGES.settings:
         return <SettingsPage />;
       case PAGES.adminSettings:

@@ -13,14 +13,33 @@ import {
   AlertCircle,
   RefreshCcw,
 } from 'lucide-react';
-import { Timestamp } from 'firebase/firestore';
+import {
+  Timestamp,
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  serverTimestamp,
+} from 'firebase/firestore';
 import { bookingService } from '../../core/services/bookingService.js';
+import { db } from '../../core/firebase/firebaseConfig.js';
+import { notificationService } from '../../core/services/notificationService.js';
 
 function toDate(ts) {
   if (!ts) return null;
   if (ts instanceof Date) return ts;
   if (ts?.toDate) return ts.toDate();
   return null;
+}
+
+function formatMoney(amount, currency = 'USD') {
+  const n = typeof amount === 'number' ? amount : Number(amount);
+  if (!Number.isFinite(n)) return '-';
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(n);
+  } catch {
+    return `$${n.toFixed(2)}`;
+  }
 }
 
 function formatDateTime(ts) {
@@ -70,6 +89,96 @@ function cleanString(v) {
   if (v == null) return null;
   const s = String(v).trim();
   return s === '' ? null : s;
+}
+
+async function fetchFcmTokenForUser(uid) {
+  if (!uid) return null;
+  const snap = await getDoc(doc(db, 'users', uid));
+  if (!snap.exists()) return null;
+  const data = snap.data() || {};
+  const token = (data.fcmToken || '').toString().trim();
+  return token || null;
+}
+
+async function storeUserNotification({ receiverUid, title, body, imageUrl, type, bookingId }) {
+  if (!receiverUid) return;
+  await addDoc(collection(db, 'users', receiverUid, 'notifications'), {
+    title,
+    body,
+    imageUrl: imageUrl || '',
+    type,
+    bookingId,
+    isRead: false,
+    createdAt: serverTimestamp(),
+  });
+}
+
+function computeRefundForCancellation({
+  paidAmount,
+  currentStatus,
+  providerStatus,
+}) {
+  const amount = typeof paidAmount === 'number' && Number.isFinite(paidAmount) ? paidAmount : 0;
+  const s = String(currentStatus || '').toLowerCase();
+  const ps = String(providerStatus || '').trim();
+
+  if (amount <= 0) return { refundAmount: 0, feeAmount: 0, condition: 'No paid amount' };
+
+  if (s === 'pending') {
+    return { refundAmount: amount, feeAmount: 0, condition: 'Condition 1: Pending booking - 100% refund' };
+  }
+
+  if (!ps || (ps !== 'onTheWay' && ps !== 'reached')) {
+    return { refundAmount: amount, feeAmount: 0, condition: 'Condition 2: Accepted, not traveling - 100% refund' };
+  }
+
+  if (ps === 'onTheWay') {
+    const cancellationFee = 5.0;
+    const stripeFee = amount * 0.029 + 0.30;
+    const totalDeduction = cancellationFee + stripeFee;
+    const refundAmount = Math.max(0, Math.min(amount, amount - totalDeduction));
+    return { refundAmount, feeAmount: totalDeduction, condition: 'Condition 3: On the way - refund minus fee' };
+  }
+
+  if (ps === 'reached') {
+    const cancellationFee = 15.0;
+    const stripeFee = amount * 0.029 + 0.30;
+    const totalDeduction = cancellationFee + stripeFee;
+    const refundAmount = Math.max(0, Math.min(amount, amount - totalDeduction));
+    return { refundAmount, feeAmount: totalDeduction, condition: 'Condition 4: Reached - refund minus fee' };
+  }
+
+  return { refundAmount: amount, feeAmount: 0, condition: 'Default: 100% refund' };
+}
+
+async function createStripeRefund({ paymentIntentId, amount }) {
+  const url =
+    import.meta.env.VITE_STRIPE_CREATE_REFUND_URL ||
+    'https://createrefund-n4boocfo2q-uc.a.run.app';
+
+  const payload = {
+    paymentIntentId,
+    amount,
+    reason: 'requested_by_customer',
+  };
+
+  if (import.meta.env.DEV) payload.mode = 'test';
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const message = data?.error || data?.message || `Refund request failed (${res.status})`;
+    throw new Error(message);
+  }
+
+  return data;
 }
 
 function badgeClass(status) {
@@ -386,8 +495,126 @@ export default function BookingDetail({ bookingId, onBack }) {
       setError(null);
 
       const updates = buildStatusUpdates();
-      await bookingService.updateBooking(bookingId, updates);
-      setStatusSaveResult({ success: true, message: 'Status saved' });
+
+      const nextStatus = cleanString(updates.status) || 'pending';
+      const prevStatus = cleanString(booking?.status) || 'pending';
+
+      if (nextStatus === 'cancelled' && prevStatus !== 'cancelled') {
+        const cancellationReason = cleanString(form.cancellationReason) || 'Cancelled by admin';
+
+        await bookingService.updateBooking(bookingId, {
+          status: 'cancelled',
+          cancelledBy: 'admin',
+          cancellationReason,
+          cancelledAt: serverTimestamp(),
+        });
+
+        const paymentIntentId = cleanString(booking?.paymentIntentId);
+        const paymentStatus = cleanString(booking?.paymentStatus);
+        const paidAmount =
+          typeof booking?.paidAmount === 'number' && Number.isFinite(booking.paidAmount)
+            ? booking.paidAmount
+            : typeof booking?.totalAmount === 'number' && Number.isFinite(booking.totalAmount)
+              ? booking.totalAmount
+              : 0;
+
+        let refundAmount = 0;
+        let feeAmount = 0;
+        let refundStatus = 'pending';
+        let isRefunded = false;
+        let refundId = null;
+        let refundError = null;
+
+        if (paymentStatus === 'completed' && paymentIntentId && paidAmount > 0) {
+          const computed = computeRefundForCancellation({
+            paidAmount,
+            currentStatus: 'cancelled',
+            providerStatus: booking?.providerStatus,
+          });
+          refundAmount = Number(Number(computed.refundAmount || 0).toFixed(2));
+          feeAmount = Number(computed.feeAmount || 0);
+
+          if (feeAmount === 0 && refundAmount > 0) {
+            try {
+              const stripeRes = await createStripeRefund({
+                paymentIntentId,
+                amount: refundAmount,
+              });
+              refundStatus = 'succeeded';
+              isRefunded = true;
+              refundId = stripeRes?.refundId || stripeRes?.id || null;
+            } catch (e) {
+              refundError = e?.message || String(e);
+              refundStatus = 'pending';
+              isRefunded = false;
+            }
+          }
+        }
+
+        await bookingService.updateBooking(bookingId, {
+          refundAmount,
+          refundStatus,
+          refundId,
+          refundReason: cancellationReason,
+          isRefunded,
+        });
+
+        const title = 'Booking Cancelled';
+        const body = 'Your booking was cancelled by admin';
+        const imageUrl = '';
+        const type = 'booking_cancelled';
+
+        const notifyUids = [cleanString(booking?.customerUid), cleanString(booking?.serviceProviderUid)].filter(Boolean);
+
+        await Promise.all(
+          notifyUids.map((uid) =>
+            storeUserNotification({
+              receiverUid: uid,
+              title,
+              body,
+              imageUrl,
+              type,
+              bookingId,
+            })
+          )
+        );
+
+        const tokens = [];
+        for (const uid of notifyUids) {
+          try {
+            const token = await fetchFcmTokenForUser(uid);
+            if (token) tokens.push(token);
+          } catch {
+            // ignore
+          }
+        }
+
+        if (notifyUids.length > 0) {
+          try {
+            await notificationService.sendUsersNotification({
+              userIds: notifyUids,
+              fcmTokens: tokens,
+              title,
+              body,
+              data: { action: 'BOOKING_CANCELLED', bookingId },
+              image: undefined,
+            });
+          } catch {
+            // ignore
+          }
+        }
+
+        if (refundError) {
+          setStatusSaveResult({ success: true, message: `Cancelled (refund pending): ${refundError}` });
+        } else if (isRefunded) {
+          setStatusSaveResult({ success: true, message: 'Cancelled (refund processed)' });
+        } else {
+          setStatusSaveResult({ success: true, message: 'Cancelled' });
+        }
+      } else {
+        await bookingService.updateBooking(bookingId, updates);
+        setStatusSaveResult({ success: true, message: 'Status saved' });
+      }
     } catch (e) {
       console.error('Failed to save booking status:', e);
       setStatusSaveResult({ success: false, message: 'Failed to save status', error: e?.message });
@@ -567,6 +794,26 @@ export default function BookingDetail({ bookingId, onBack }) {
               <span className={`booking-badge ${booking.isRefunded === true ? 'danger' : 'neutral'}`}>{headerBadges.refund}</span>
               <span className={`booking-badge ${booking.isPaidOut === true ? 'success' : 'neutral'}`}>{headerBadges.payout}</span>
             </div>
+
+            <div className="booking-summary">
+              <div className="booking-summary-item">
+                <span className="detail-label">Provider</span>
+                <span className="detail-value">{booking.serviceProviderName || '-'}</span>
+              </div>
+              <div className="booking-summary-item">
+                <span className="detail-label">Customer</span>
+                <span className="detail-value">{booking.customerName || '-'}</span>
+              </div>
+              <div className="booking-summary-item">
+                <span className="detail-label">Amount</span>
+                <span className="detail-value">{formatMoney(booking.totalAmount, booking.currency || 'USD')}</span>
+              </div>
+              <div className="booking-summary-item">
+                <span className="detail-label">Method</span>
+                <span className="detail-value">{booking.paymentMethod || '-'}</span>
+              </div>
+            </div>
+
             <div className="booking-meta">
               <div className="booking-meta-item">
                 <span className="detail-label">Created</span>
@@ -592,6 +839,7 @@ export default function BookingDetail({ bookingId, onBack }) {
                   <select className="booking-input" name="status" value={form.status} onChange={handleChange}>
                     <option value="pending">pending</option>
                     <option value="accepted">accepted</option>
+                    <option value="active">active</option>
                     <option value="completed">completed</option>
                     <option value="cancelled">cancelled</option>
                     <option value="declined">declined</option>
@@ -736,10 +984,16 @@ export default function BookingDetail({ bookingId, onBack }) {
                     />
                   </>
                 ) : (
-                  <>
-                    <span className="detail-value">{booking.isRefunded ? 'Yes' : 'No'}</span>
-                    <span className="detail-value">{booking.refundAmount ?? '-'}</span>
-                  </>
+                  <div className="booking-readonly-pair">
+                    <div>
+                      <span className="detail-label">Refunded</span>
+                      <span className="detail-value">{booking.isRefunded ? 'Yes' : 'No'}</span>
+                    </div>
+                    <div>
+                      <span className="detail-label">Refund Amount</span>
+                      <span className="detail-value">{booking.refundAmount ?? '-'}</span>
+                    </div>
+                  </div>
                 )}
               </div>
               <div className="detail-item booking-checkbox">
@@ -749,7 +1003,10 @@ export default function BookingDetail({ bookingId, onBack }) {
                     Paid out
                   </label>
                 ) : (
-                  <span className="detail-value">{booking.isPaidOut ? 'Yes' : 'No'}</span>
+                  <div>
+                    <span className="detail-label">Paid out</span>
+                    <span className="detail-value">{booking.isPaidOut ? 'Yes' : 'No'}</span>
+                  </div>
                 )}
               </div>
             </div>

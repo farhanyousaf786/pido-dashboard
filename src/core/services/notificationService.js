@@ -13,10 +13,23 @@ async function apiRequest(url, options = {}) {
     ...(options.headers || {}),
   };
 
-  const res = await fetch(url, {
-    ...options,
-    headers,
-  });
+  let res;
+  try {
+    res = await fetch(url, {
+      ...options,
+      headers,
+    });
+  } catch (err) {
+    const isNetwork =
+      err?.name === 'TypeError' ||
+      /Failed to fetch|NetworkError|load failed/i.test(String(err?.message || ''));
+    if (isNetwork) {
+      throw new Error(
+        `Cannot reach API at ${API_BASE_URL}. Start the notification server (e.g. cd server && npm install && npm run dev) and ensure VITE_API_BASE_URL matches its PORT in .env.local, then restart Vite.`
+      );
+    }
+    throw err;
+  }
 
   const contentType = (res.headers.get('content-type') || '').toLowerCase();
   let data = null;

@@ -2,13 +2,16 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Calendar,
   Filter,
+  Clock,
   RefreshCcw,
   Search,
-  SlidersHorizontal,
   ArrowRight,
   AlertCircle,
+  CheckCircle,
+  XCircle,
 } from 'lucide-react';
 import { bookingService } from '../../core/services/bookingService.js';
+import StatCard from '../dashboard/components/StatCard.jsx';
 
 const BOOKINGS_PER_PAGE = 25;
 const LOAD_MORE_COUNT = 25;
@@ -82,18 +85,9 @@ export default function Bookings({ onBookingClick }) {
 
   const [filters, setFilters] = useState({
     status: 'all',
-    paymentStatus: 'all',
-    paymentMethod: 'all',
-    platform: 'all',
-    refund: 'all',
-    payout: 'all',
     dateFilter: 'all',
     customStart: '',
     customEnd: '',
-    minAmount: '',
-    maxAmount: '',
-    providerQuery: '',
-    customerQuery: '',
   });
 
   const dateRange = useMemo(() => {
@@ -158,27 +152,6 @@ export default function Bookings({ onBookingClick }) {
     if (filters.status && filters.status !== 'all') {
       result = result.filter((b) => String(b.status || '').toLowerCase() === filters.status);
     }
-    if (filters.paymentStatus && filters.paymentStatus !== 'all') {
-      result = result.filter(
-        (b) => String(b.paymentStatus || '').toLowerCase() === filters.paymentStatus
-      );
-    }
-    if (filters.paymentMethod && filters.paymentMethod !== 'all') {
-      result = result.filter(
-        (b) => String(b.paymentMethod || '').toLowerCase() === filters.paymentMethod
-      );
-    }
-    if (filters.platform && filters.platform !== 'all') {
-      result = result.filter((b) => String(b.platform || '').toLowerCase() === filters.platform);
-    }
-    if (filters.refund !== 'all') {
-      const isRefunded = b => b?.isRefunded === true;
-      result = result.filter((b) => (filters.refund === 'refunded' ? isRefunded(b) : !isRefunded(b)));
-    }
-    if (filters.payout !== 'all') {
-      const isPaidOut = b => b?.isPaidOut === true;
-      result = result.filter((b) => (filters.payout === 'paidout' ? isPaidOut(b) : !isPaidOut(b)));
-    }
 
     if (dateRange?.start || dateRange?.end) {
       result = result.filter((b) => {
@@ -187,34 +160,6 @@ export default function Bookings({ onBookingClick }) {
         if (dateRange?.start && createdAt < dateRange.start) return false;
         if (dateRange?.end && createdAt >= dateRange.end) return false;
         return true;
-      });
-    }
-
-    const minAmount = filters.minAmount !== '' ? Number(filters.minAmount) : null;
-    const maxAmount = filters.maxAmount !== '' ? Number(filters.maxAmount) : null;
-    if (minAmount != null && Number.isFinite(minAmount)) {
-      result = result.filter((b) => (Number(b.totalAmount) || 0) >= minAmount);
-    }
-    if (maxAmount != null && Number.isFinite(maxAmount)) {
-      result = result.filter((b) => (Number(b.totalAmount) || 0) <= maxAmount);
-    }
-
-    if (filters.providerQuery?.trim()) {
-      const q = filters.providerQuery.trim().toLowerCase();
-      result = result.filter((b) => {
-        const uid = String(b.serviceProviderUid || '').toLowerCase();
-        const name = String(b.serviceProviderName || '').toLowerCase();
-        return uid.includes(q) || name.includes(q);
-      });
-    }
-
-    if (filters.customerQuery?.trim()) {
-      const q = filters.customerQuery.trim().toLowerCase();
-      result = result.filter((b) => {
-        const uid = String(b.customerUid || '').toLowerCase();
-        const name = String(b.customerName || '').toLowerCase();
-        const email = String(b.customerEmail || '').toLowerCase();
-        return uid.includes(q) || name.includes(q) || email.includes(q);
       });
     }
 
@@ -250,21 +195,23 @@ export default function Bookings({ onBookingClick }) {
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
 
-  const uniquePaymentMethods = useMemo(() => {
-    const s = new Set();
-    bookings.forEach((b) => {
-      if (b.paymentMethod) s.add(String(b.paymentMethod).toLowerCase());
-    });
-    return Array.from(s).sort();
-  }, [bookings]);
-
-  const uniquePlatforms = useMemo(() => {
-    const s = new Set();
-    bookings.forEach((b) => {
-      if (b.platform) s.add(String(b.platform).toLowerCase());
-    });
-    return Array.from(s).sort();
-  }, [bookings]);
+  const bookingStats = useMemo(() => {
+    const total = filteredBookings.length;
+    const pending = filteredBookings.filter((b) => String(b.status || '').toLowerCase() === 'pending').length;
+    const accepted = filteredBookings.filter((b) => String(b.status || '').toLowerCase() === 'accepted').length;
+    const active = filteredBookings.filter((b) => String(b.status || '').toLowerCase() === 'active').length;
+    const completed = filteredBookings.filter((b) => String(b.status || '').toLowerCase() === 'completed').length;
+    const cancelled = filteredBookings.filter((b) => String(b.status || '').toLowerCase() === 'cancelled').length;
+    return {
+      total,
+      pending,
+      accepted,
+      active,
+      activeBookings: pending + accepted + active,
+      completed,
+      cancelled,
+    };
+  }, [filteredBookings]);
 
   return (
     <div className="bookings-page">
@@ -307,69 +254,10 @@ export default function Bookings({ onBookingClick }) {
               <option value="all">All</option>
               <option value="pending">Pending</option>
               <option value="accepted">Accepted</option>
+              <option value="active">Active</option>
               <option value="completed">Completed</option>
               <option value="cancelled">Cancelled</option>
               <option value="declined">Declined</option>
-            </select>
-          </div>
-
-          <div className="bookings-filter">
-            <label>
-              <SlidersHorizontal size={14} /> Payment Status
-            </label>
-            <select
-              value={filters.paymentStatus}
-              onChange={(e) => updateFilter('paymentStatus', e.target.value)}
-            >
-              <option value="all">All</option>
-              <option value="pending">Pending</option>
-              <option value="completed">Completed</option>
-              <option value="failed">Failed</option>
-            </select>
-          </div>
-
-          <div className="bookings-filter">
-            <label>Payment Method</label>
-            <select
-              value={filters.paymentMethod}
-              onChange={(e) => updateFilter('paymentMethod', e.target.value)}
-            >
-              <option value="all">All</option>
-              {uniquePaymentMethods.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="bookings-filter">
-            <label>Platform</label>
-            <select value={filters.platform} onChange={(e) => updateFilter('platform', e.target.value)}>
-              <option value="all">All</option>
-              {uniquePlatforms.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="bookings-filter">
-            <label>Refund</label>
-            <select value={filters.refund} onChange={(e) => updateFilter('refund', e.target.value)}>
-              <option value="all">All</option>
-              <option value="refunded">Refunded</option>
-              <option value="not_refunded">Not refunded</option>
-            </select>
-          </div>
-
-          <div className="bookings-filter">
-            <label>Payout</label>
-            <select value={filters.payout} onChange={(e) => updateFilter('payout', e.target.value)}>
-              <option value="all">All</option>
-              <option value="paidout">Paid out</option>
-              <option value="not_paidout">Not paid out</option>
             </select>
           </div>
 
@@ -405,47 +293,38 @@ export default function Bookings({ onBookingClick }) {
               </div>
             </div>
           )}
-
-          <div className="bookings-filter">
-            <label>Min Amount</label>
-            <input
-              type="number"
-              value={filters.minAmount}
-              onChange={(e) => updateFilter('minAmount', e.target.value)}
-              placeholder="0"
-            />
-          </div>
-
-          <div className="bookings-filter">
-            <label>Max Amount</label>
-            <input
-              type="number"
-              value={filters.maxAmount}
-              onChange={(e) => updateFilter('maxAmount', e.target.value)}
-              placeholder="1000"
-            />
-          </div>
-
-          <div className="bookings-filter">
-            <label>Provider</label>
-            <input
-              type="text"
-              value={filters.providerQuery}
-              onChange={(e) => updateFilter('providerQuery', e.target.value)}
-              placeholder="Provider name or uid"
-            />
-          </div>
-
-          <div className="bookings-filter">
-            <label>Customer</label>
-            <input
-              type="text"
-              value={filters.customerQuery}
-              onChange={(e) => updateFilter('customerQuery', e.target.value)}
-              placeholder="Customer name, email or uid"
-            />
-          </div>
         </div>
+      </div>
+
+      <div className="bookings-stats-grid">
+        <StatCard
+          title="Total Bookings"
+          value={bookingStats.total}
+          subtitle={filters.dateFilter === 'all' ? 'All time bookings' : 'Filtered bookings'}
+          icon={Calendar}
+          color="blue"
+        />
+        <StatCard
+          title="Active Bookings"
+          value={bookingStats.activeBookings}
+          subtitle={`${bookingStats.pending} pending · ${bookingStats.accepted} accepted · ${bookingStats.active} active`}
+          icon={Clock}
+          color="orange"
+        />
+        <StatCard
+          title="Completed"
+          value={bookingStats.completed}
+          subtitle="Successfully finished"
+          icon={CheckCircle}
+          color="green"
+        />
+        <StatCard
+          title="Cancelled"
+          value={bookingStats.cancelled}
+          subtitle="Cancelled bookings"
+          icon={XCircle}
+          color="red"
+        />
       </div>
 
       {error && (

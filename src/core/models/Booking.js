@@ -82,9 +82,16 @@ export function createBookingModel(data = {}) {
 
     // Payment fields
     paymentIntentId: data.paymentIntentId ?? null,
+    paidAmount: data.paidAmount ?? null,
     isRefunded: data.isRefunded ?? false,
     refundAmount: data.refundAmount ?? 0.0,
+    refundId: data.refundId ?? null,
+    refundStatus: data.refundStatus ?? null,
+    refundReason: data.refundReason ?? null,
     isPaidOut: data.isPaidOut ?? false,
+
+    cancelledAt: data.cancelledAt ?? null,
+    cancellationNotes: data.cancellationNotes ?? null,
   };
 }
 
@@ -172,9 +179,16 @@ export function bookingFromFirestore(doc) {
 
     // Payment
     paymentIntentId: data?.paymentIntentId ?? null,
+    paidAmount: parseDouble(data?.paidAmount),
     isRefunded: data?.isRefunded ?? false,
     refundAmount: parseDouble(data?.refundAmount) ?? 0.0,
+    refundId: data?.refundId ?? null,
+    refundStatus: data?.refundStatus ?? null,
+    refundReason: data?.refundReason ?? null,
     isPaidOut: data?.isPaidOut ?? false,
+
+    cancelledAt: parseTimestamp(data?.cancelledAt),
+    cancellationNotes: data?.cancellationNotes ?? null,
   });
 }
 
