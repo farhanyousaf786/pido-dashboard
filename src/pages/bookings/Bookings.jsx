@@ -9,6 +9,7 @@ import {
   AlertCircle,
   CheckCircle,
   XCircle,
+  Trash2,
 } from 'lucide-react';
 import { bookingService } from '../../core/services/bookingService.js';
 import StatCard from '../dashboard/components/StatCard.jsx';
@@ -36,16 +37,14 @@ function getCreatedAtDate(booking) {
   return null;
 }
 
-function formatDateTime(ts) {
+function formatDateOnlySmall(ts) {
   if (!ts) return '-';
   const d = ts instanceof Date ? ts : ts?.toDate ? ts.toDate() : null;
   if (!d) return '-';
-  return d.toLocaleString('en-US', {
-    year: 'numeric',
+  return d.toLocaleDateString('en-US', {
     month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
+    day: 'numeric',
+    year: 'numeric',
   });
 }
 
@@ -79,6 +78,7 @@ export default function Bookings({ onBookingClick }) {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   const [visibleCount, setVisibleCount] = useState(BOOKINGS_PER_PAGE);
   const [searchQuery, setSearchQuery] = useState('');
@@ -189,6 +189,23 @@ export default function Bookings({ onBookingClick }) {
 
   const handleRefresh = () => {
     setError(null);
+  };
+
+  const handleDeleteBooking = async (booking, e) => {
+    e.stopPropagation();
+    const id = booking?.bookingId;
+    if (!id || deletingId) return;
+    if (!window.confirm(`Delete this booking? This cannot be undone.`)) return;
+    setDeletingId(id);
+    setError(null);
+    try {
+      await bookingService.deleteBooking(id);
+    } catch (err) {
+      console.error(err);
+      setError(err?.message || 'Failed to delete booking.');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const updateFilter = (key, value) => {
@@ -365,7 +382,6 @@ export default function Bookings({ onBookingClick }) {
               <tr>
                 <th>Provider</th>
                 <th>Status</th>
-                <th>Payment</th>
                 <th>Customer</th>
                 <th>Booking</th>
                 <th>Amount</th>
@@ -391,37 +407,44 @@ export default function Bookings({ onBookingClick }) {
                   </td>
                   <td>
                     <div className="bookings-cell-main">
-                      <span className={`booking-badge ${statusBadgeClass(b.paymentStatus)}`}>{b.paymentStatus || '-'}</span>
-                      <div className="bookings-sub">{b.paymentMethod || '-'}</div>
-                    </div>
-                  </td>
-                  <td>
-                    <div className="bookings-cell-main">
                       <div className="bookings-strong">{b.customerName || '-'}</div>
                       <div className="bookings-sub monospace">{maskUid(b.customerUid)}</div>
                     </div>
                   </td>
                   <td>
-                    <div className="bookings-cell-main">
-                      <div className="bookings-id monospace">{b.bookingId}</div>
-                      <div className="bookings-sub">{b.categoryName || '-'} · {b.platform || '-'}</div>
+                    <div className="bookings-sub bookings-booking-name">
+                      {b.categoryName || '-'} · {b.platform || '-'}
                     </div>
                   </td>
                   <td>
                     <div className="bookings-strong">{formatMoney(b.totalAmount, b.currency || 'USD')}</div>
                   </td>
-                  <td>{formatDateTime(b.createdAt)}</td>
                   <td>
-                    <button
-                      type="button"
-                      className="bookings-view-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onBookingClick && onBookingClick(b);
-                      }}
-                    >
-                      View <ArrowRight size={14} />
-                    </button>
+                    <span className="bookings-created-date">{formatDateOnlySmall(b.createdAt)}</span>
+                  </td>
+                  <td>
+                    <div className="bookings-row-actions">
+                      <button
+                        type="button"
+                        className="bookings-view-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onBookingClick && onBookingClick(b);
+                        }}
+                      >
+                        View <ArrowRight size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        className="bookings-delete-btn"
+                        disabled={deletingId === b.bookingId}
+                        onClick={(e) => handleDeleteBooking(b, e)}
+                        aria-label="Delete booking"
+                      >
+                        <Trash2 size={14} />
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

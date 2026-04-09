@@ -1,6 +1,7 @@
 import { db } from '../firebase/firebaseConfig.js';
 import {
   collection,
+  deleteDoc,
   doc,
   limit,
   onSnapshot,
@@ -58,6 +59,13 @@ export const bookingService = {
       updatedAt: serverTimestamp(),
     });
 
+    return { success: true };
+  },
+
+  async deleteBooking(bookingId) {
+    if (!bookingId) throw new Error('bookingId is required');
+    const ref = doc(db, 'bookings', bookingId);
+    await deleteDoc(ref);
     return { success: true };
   },
 };

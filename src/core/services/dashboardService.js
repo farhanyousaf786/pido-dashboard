@@ -33,8 +33,58 @@ function applyCreatedAtRange(q, dateRange) {
   return next;
 }
 
+function bookingInvolvesTestUser(booking, testUidSet) {
+  const c = booking.customerUid || '';
+  const p = booking.serviceProviderUid || '';
+  if (c && testUidSet.has(c)) return true;
+  if (p && testUidSet.has(p)) return true;
+  return false;
+}
+
+export async function fetchTestUserUidSet() {
+  const q = query(usersRef, where('isTestUser', '==', true));
+  const snap = await getDocs(q);
+  return new Set(snap.docs.map((d) => d.id));
+}
+
+function aggregateBookingStatsFromList(list) {
+  let activeBookings = 0;
+  let pendingBookings = 0;
+  let completedBookings = 0;
+  let cancelledBookings = 0;
+  let totalRevenue = 0;
+  let appRevenue = 0;
+  let providerPayout = 0;
+
+  for (const booking of list) {
+    const s = (booking.status || '').toString().toLowerCase();
+    if (s === 'pending' || s === 'accepted') activeBookings += 1;
+    if (s === 'pending') pendingBookings += 1;
+    if (s === 'completed') completedBookings += 1;
+    if (s === 'cancelled') cancelledBookings += 1;
+    const pay = (booking.paymentStatus || '').toString().toLowerCase();
+    if (s === 'completed' && pay === 'completed') {
+      totalRevenue += BookingHelpers.getOverallRevenue(booking);
+      appRevenue += BookingHelpers.getAppRevenue(booking);
+      providerPayout += BookingHelpers.getProviderPayout(booking);
+    }
+  }
+
+  return {
+    totalBookings: list.length,
+    activeBookings,
+    pendingBookings,
+    completedBookings,
+    cancelledBookings,
+    totalRevenue,
+    appRevenue,
+    providerPayout,
+  };
+}
+
 // Get user stats
-export async function getUserStats() {
+export async function getUserStats(options = {}) {
+  const { excludeTestUsers = false } = options;
   try {
     // Total users count
     const totalSnapshot = await getCountFromServer(usersRef);
@@ -44,7 +94,9 @@ export async function getUserStats() {
     let totalProviders = 0;
     try {
       const verificationRequestsList = await verificationService.fetchVerificationRequestsList();
-      totalProviders = await verificationService.countLinkedDedupedProviders(verificationRequestsList);
+      totalProviders = await verificationService.countLinkedDedupedProviders(verificationRequestsList, {
+        excludeTestUsers,
+      });
     } catch (e) {
       console.error('Dashboard provider verification count:', e);
       totalProviders = 0;
@@ -71,13 +123,36 @@ export async function getUserStats() {
     const pendingSnapshot = await getCountFromServer(pendingQuery);
     const pendingVerifications = pendingSnapshot.data().count;
 
+    if (!excludeTestUsers) {
+      return {
+        totalUsers,
+        totalProviders,
+        totalCustomers,
+        onlineUsers,
+        offlineUsers: totalUsers - onlineUsers,
+        pendingVerifications,
+      };
+    }
+
+    const testSnap = await getDocs(query(usersRef, where('isTestUser', '==', true)));
+    const testUsers = testSnap.docs.map((d) => userFromFirestore(d));
+    const testUserCount = testUsers.length;
+    const testCustomerCount = testUsers.filter((u) => u.userType === 'customer').length;
+    const testOnlineCount = testUsers.filter((u) => u.isOnline === true).length;
+    const testPendingCount = testUsers.filter(
+      (u) => (u.accountStatus || '').toString() === 'pending_approval'
+    ).length;
+
+    const totalUsersAdj = Math.max(0, totalUsers - testUserCount);
+    const onlineUsersAdj = Math.max(0, onlineUsers - testOnlineCount);
+
     return {
-      totalUsers,
+      totalUsers: totalUsersAdj,
       totalProviders,
-      totalCustomers,
-      onlineUsers,
-      offlineUsers: totalUsers - onlineUsers,
-      pendingVerifications,
+      totalCustomers: Math.max(0, totalCustomers - testCustomerCount),
+      onlineUsers: onlineUsersAdj,
+      offlineUsers: Math.max(0, totalUsersAdj - onlineUsersAdj),
+      pendingVerifications: Math.max(0, pendingVerifications - testPendingCount),
     };
   } catch (error) {
     console.error('Error fetching user stats:', error);
@@ -92,8 +167,35 @@ export async function getUserStats() {
   }
 }
 
+const emptyBookingStats = {
+  totalBookings: 0,
+  activeBookings: 0,
+  pendingBookings: 0,
+  completedBookings: 0,
+  cancelledBookings: 0,
+  totalRevenue: 0,
+  appRevenue: 0,
+  providerPayout: 0,
+};
+
 // Get booking stats
-export async function getBookingStats(dateRange) {
+export async function getBookingStats(dateRange, options = {}) {
+  const { excludeTestUsers = false } = options;
+
+  if (excludeTestUsers) {
+    try {
+      const testUidSet = await fetchTestUserUidSet();
+      const snapshot = await getDocs(applyCreatedAtRange(bookingsRef, dateRange));
+      const list = snapshot.docs
+        .map((d) => bookingFromFirestore(d))
+        .filter((b) => !bookingInvolvesTestUser(b, testUidSet));
+      return aggregateBookingStatsFromList(list);
+    } catch (error) {
+      console.error('Error fetching booking stats:', error);
+      return { ...emptyBookingStats };
+    }
+  }
+
   try {
     // Total bookings
     const totalSnapshot = await getCountFromServer(applyCreatedAtRange(bookingsRef, dateRange));
@@ -150,22 +252,14 @@ export async function getBookingStats(dateRange) {
     };
   } catch (error) {
     console.error('Error fetching booking stats:', error);
-    return {
-      totalBookings: 0,
-      activeBookings: 0,
-      pendingBookings: 0,
-      completedBookings: 0,
-      cancelledBookings: 0,
-      totalRevenue: 0,
-      appRevenue: 0,
-      providerPayout: 0,
-    };
+    return { ...emptyBookingStats };
   }
 }
 
 // Get bookings data for charts (last 30 days) using Booking model
 // revenueType: 'overall' | 'app' | 'provider'
-export async function getBookingsChartData(revenueType = 'overall', dateRange) {
+export async function getBookingsChartData(revenueType = 'overall', dateRange, options = {}) {
+  const { excludeTestUsers = false } = options;
   try {
     const now = new Date();
     const effectiveStart = dateRange?.start
@@ -182,7 +276,11 @@ export async function getBookingsChartData(revenueType = 'overall', dateRange) {
     const snapshot = await getDocs(chartQuery);
 
     // Parse all bookings using model
-    const bookings = snapshot.docs.map(doc => bookingFromFirestore(doc));
+    let bookings = snapshot.docs.map(doc => bookingFromFirestore(doc));
+    if (excludeTestUsers) {
+      const testUidSet = await fetchTestUserUidSet();
+      bookings = bookings.filter((b) => !bookingInvolvesTestUser(b, testUidSet));
+    }
 
     // Group by date
     const dailyData = {};

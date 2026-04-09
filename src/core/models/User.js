@@ -11,7 +11,9 @@ export function createUserModel(data = {}) {
     fullName: data.fullName ?? null,
     displayName: data.displayName ?? null,
     userType: data.userType ?? null, // 'customer' or 'serviceProvider'
-    
+    /** Admin / QA: when true, exclude from prod metrics or filter in dashboard. */
+    isTestUser: data.isTestUser === true,
+
     // Location
     latitude: data.latitude ?? null,
     longitude: data.longitude ?? null,
@@ -60,6 +62,7 @@ export function userFromFirestore(doc) {
     fullName: data?.fullName ?? null,
     displayName: data?.displayName ?? null,
     userType: data?.userType ?? null,
+    isTestUser: data?.isTestUser === true,
     latitude: parseDouble(data?.latitude),
     longitude: parseDouble(data?.longitude),
     currentAddress: data?.currentAddress ?? null,
@@ -94,6 +97,8 @@ export function userToFirestore(user) {
   if (user.provider?.length) result.provider = user.provider;
   if (user.email) result.email = user.email;
   if (user.userType) result.userType = user.userType;
+  if (user.isTestUser === true) result.isTestUser = true;
+  if (user.isTestUser === false) result.isTestUser = false;
   if (user.latitude != null) result.latitude = user.latitude;
   if (user.longitude != null) result.longitude = user.longitude;
   if (user.currentAddress) result.currentAddress = user.currentAddress;
@@ -143,6 +148,12 @@ function parseTimestamp(value) {
   return null;
 }
 
+function shortUidForLabel(uid) {
+  if (!uid) return '';
+  const s = String(uid);
+  return s.length > 16 ? `${s.slice(0, 16)}…` : s;
+}
+
 // User helpers
 export const UserHelpers = {
   isCustomer: (user) => user.userType === 'customer',
@@ -155,8 +166,31 @@ export const UserHelpers = {
   isApproved: (user) => user.accountStatus === 'approved',
   isRejected: (user) => user.accountStatus === 'rejected',
   hasActiveBooking: (user) => user.activeBookingId != null,
-  displayName: (user) => {
-    const name = user.fullName || user.displayName || user.email || user.phoneNumber || 'Unknown';
-    return name.length > 10 ? name.substring(0, 10) + '...' : name;
+  /** Name for tables — not email/phone (use contactDisplay). Uses profile/userinfo fields when merged onto user. */
+  personName: (user) => {
+    if (!user) return 'Unknown';
+    const fn = (user.firstName || '').toString().trim();
+    const ln = (user.lastName || '').toString().trim();
+    const composed = fn && ln ? `${fn} ${ln}` : fn || ln;
+    const raw =
+      (user.fullName && String(user.fullName).trim()) ||
+      (user.full_name && String(user.full_name).trim()) ||
+      (user.displayName && String(user.displayName).trim()) ||
+      (user.name && String(user.name).trim()) ||
+      (user.customerName && String(user.customerName).trim()) ||
+      composed;
+    if (raw) return raw;
+    const u = (user.uid || '').toString().trim();
+    return u ? shortUidForLabel(u) : 'Unknown';
   },
+  /** Email · phone or whichever exists (aligned with referral / verification patterns). */
+  contactDisplay: (user) => {
+    if (!user) return '—';
+    const email = (user.email || user.emailAddress || user.email_address || '').toString().trim();
+    const phone = (user.phoneNumber || user.phone_number || user.phone || user.mobile || user.mobilePhone || user.mobile_phone || user.mobileNumber || user.mobile_number || '').toString().trim();
+    if (email && phone) return `${email} · ${phone}`;
+    return email || phone || '—';
+  },
+  /** Back-compat: same as personName. */
+  displayName: (user) => UserHelpers.personName(user),
 };

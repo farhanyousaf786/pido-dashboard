@@ -111,6 +111,26 @@ export const verificationService = {
     );
   },
 
+  /** `users/{userId}/profile/userinfo` — mobile app stores `fullName` here. */
+  subscribeToUserProfileUserinfo: (userId, callback) => {
+    if (!userId) {
+      callback(null);
+      return () => {};
+    }
+
+    const userInfoRef = doc(db, 'users', userId, 'profile', 'userinfo');
+    return onSnapshot(
+      userInfoRef,
+      (snap) => {
+        callback(snap.exists() ? snap.data() : null);
+      },
+      (error) => {
+        console.error('Error subscribing to user profile userinfo:', error);
+        callback(null);
+      }
+    );
+  },
+
   // Subscribe to all verification requests (real-time)
   subscribeToVerificationRequests: (callback) => {
     const q = query(
@@ -307,7 +327,8 @@ export const verificationService = {
    * Count on Verifications → Providers matches displayedStats.total: deduped provider requests
    * that resolve to an existing users/{uid} doc (non-orphan), same as the stats bar pipeline.
    */
-  countLinkedDedupedProviders: async (requests) => {
+  countLinkedDedupedProviders: async (requests, options = {}) => {
+    const { excludeTestUsers = false } = options;
     if (!requests?.length) return 0;
     const deduped = dedupeVerificationRequests(requests);
     const providers = deduped.filter((r) => r.userType === 'serviceProvider');
@@ -317,7 +338,9 @@ export const verificationService = {
           const userId = await verificationService.resolveUserIdFromRequestData(req, req.id);
           if (!userId) return false;
           const userSnap = await getDoc(doc(db, 'users', userId));
-          return userSnap.exists();
+          if (!userSnap.exists()) return false;
+          if (excludeTestUsers && userSnap.data()?.isTestUser === true) return false;
+          return true;
         } catch {
           return false;
         }

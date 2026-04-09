@@ -1,7 +1,12 @@
 import React from 'react';
 import { Users, UserCheck, Briefcase, Clock, Shield, UserX } from 'lucide-react';
 
-export default function UserStats({ users, loading }) {
+export default function UserStats({
+  users,
+  loading,
+  providerVerificationTotal = null,
+  providerVerificationLoading = false,
+}) {
   if (loading) {
     return (
       <div className="user-stats-bar skeleton">
@@ -16,7 +21,11 @@ export default function UserStats({ users, loading }) {
   const totalUsers = users.length;
   const onlineUsers = users.filter(u => u.isOnline === true).length;
   const offlineUsers = totalUsers - onlineUsers;
-  const providers = users.filter(u => u.userType === 'serviceProvider').length;
+  const providersFromUsers = users.filter(u => u.userType === 'serviceProvider').length;
+  const providers =
+    providerVerificationTotal != null && !providerVerificationLoading
+      ? providerVerificationTotal
+      : providersFromUsers;
   const customers = users.filter(u => u.userType === 'customer').length;
   const pendingApproval = users.filter(u => u.accountStatus === 'pending_approval').length;
 
@@ -49,7 +58,9 @@ export default function UserStats({ users, loading }) {
       <div className="user-stat-item">
         <Briefcase size={18} className="stat-icon orange" />
         <div className="stat-info">
-          <span className="stat-value">{providers}</span>
+          <span className="stat-value">
+            {providerVerificationLoading ? '…' : providers}
+          </span>
           <span className="stat-label">Providers</span>
         </div>
       </div>

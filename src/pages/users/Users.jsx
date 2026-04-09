@@ -1,16 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { getUsersList } from '../../core/services/dashboardService.js';
-import { userFromFirestore } from '../../core/models/User.js';
-import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
+import { userFromFirestore, UserHelpers } from '../../core/models/User.js';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../../core/firebase/firebaseConfig.js';
 import { Users as UsersIcon, AlertCircle } from 'lucide-react';
+import { fetchProfileUserinfo } from '../../core/services/userProfileMerge.js';
+import { verificationService } from '../../core/services/verificationService.js';
 
 // Components
 import UserRow from './components/UserRow.jsx';
 import UserFilters from './components/UserFilters.jsx';
 import UserStats from './components/UserStats.jsx';
+import { useAuth } from '../../core/auth/AuthContext';
 
 export default function Users({ onUserClick, initialFilters = null }) {
+  const { adminTestMode } = useAuth();
+  const excludeTestUsers = !adminTestMode;
   const [users, setUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [displayedUsers, setDisplayedUsers] = useState([]);
@@ -19,9 +24,84 @@ export default function Users({ onUserClick, initialFilters = null }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState({});
   const [visibleCount, setVisibleCount] = useState(20);
+  const [profileByUid, setProfileByUid] = useState({});
+  const profileCacheRef = useRef({});
+  const [providerVerificationTotal, setProviderVerificationTotal] = useState(null);
+  const [providerVerificationLoading, setProviderVerificationLoading] = useState(true);
 
   const USERS_PER_PAGE = 20;
   const LOAD_MORE_COUNT = 20;
+
+  const usersWithProfile = useMemo(
+    () =>
+      users.map((u) => ({
+        ...u,
+        ...(profileByUid[u.uid] || {}),
+        uid: u.uid,
+      })),
+    [users, profileByUid]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    setProviderVerificationLoading(true);
+    (async () => {
+      try {
+        const list = await verificationService.fetchVerificationRequestsList();
+        const n = await verificationService.countLinkedDedupedProviders(list, {
+          excludeTestUsers,
+        });
+        if (!cancelled) setProviderVerificationTotal(n);
+      } catch (e) {
+        console.error('Users page provider verification count:', e);
+        if (!cancelled) setProviderVerificationTotal(null);
+      } finally {
+        if (!cancelled) setProviderVerificationLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [excludeTestUsers]);
+
+  const usersForStats = useMemo(() => {
+    if (!excludeTestUsers) return users;
+    return users.filter((u) => u.isTestUser !== true);
+  }, [users, excludeTestUsers]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const uidList = users.map((u) => u.uid).filter(Boolean);
+    const cache = profileCacheRef.current;
+
+    for (const uid of Object.keys(cache)) {
+      if (!uidList.includes(uid)) delete cache[uid];
+    }
+
+    const missing = uidList.filter((uid) => !(uid in cache));
+    if (missing.length === 0) {
+      setProfileByUid({ ...cache });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    (async () => {
+      for (let i = 0; i < missing.length; i += 20) {
+        const chunk = missing.slice(i, i + 20);
+        const rows = await Promise.all(chunk.map((uid) => fetchProfileUserinfo(uid)));
+        if (cancelled) return;
+        chunk.forEach((uid, j) => {
+          cache[uid] = rows[j] || {};
+        });
+      }
+      if (!cancelled) setProfileByUid({ ...cache });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [users]);
 
   useEffect(() => {
     if (!initialFilters) return;
@@ -63,9 +143,23 @@ export default function Users({ onUserClick, initialFilters = null }) {
 
   // Apply filters and search
   useEffect(() => {
-    let result = [...users];
+    let result = [...usersWithProfile];
 
-    // Apply filters
+    if (excludeTestUsers) {
+      if (filters.isTestUser === true) {
+        result = result.filter((u) => u.isTestUser === true);
+      } else {
+        result = result.filter((u) => u.isTestUser !== true);
+      }
+    } else {
+      if (filters.isTestUser === true) {
+        result = result.filter((u) => u.isTestUser === true);
+      }
+      if (filters.isTestUser === false) {
+        result = result.filter((u) => u.isTestUser !== true);
+      }
+    }
+
     if (filters.userType) {
       result = result.filter(u => u.userType === filters.userType);
     }
@@ -78,17 +172,22 @@ export default function Users({ onUserClick, initialFilters = null }) {
 
     // Apply search
     if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(u => 
-        (u.email && u.email.toLowerCase().includes(query)) ||
-        (u.phoneNumber && u.phoneNumber.includes(query)) ||
-        (u.uid && u.uid.toLowerCase().includes(query))
-      );
+      const q = searchQuery.toLowerCase();
+      result = result.filter((u) => {
+        const name = UserHelpers.personName(u).toLowerCase();
+        return (
+          (u.email && u.email.toLowerCase().includes(q)) ||
+          (u.phoneNumber && u.phoneNumber.toLowerCase().includes(q)) ||
+          (u.uid && u.uid.toLowerCase().includes(q)) ||
+          (name && name.includes(q)) ||
+          (u.fullName && String(u.fullName).toLowerCase().includes(q))
+        );
+      });
     }
 
     setFilteredUsers(result);
     setDisplayedUsers(result.slice(0, visibleCount));
-  }, [users, filters, searchQuery, visibleCount]);
+  }, [usersWithProfile, filters, searchQuery, visibleCount, excludeTestUsers]);
 
   const handleLoadMore = () => {
     setVisibleCount(prev => prev + LOAD_MORE_COUNT);
@@ -127,7 +226,12 @@ export default function Users({ onUserClick, initialFilters = null }) {
       </div>
 
       {/* Stats Bar */}
-      <UserStats users={users} loading={loading} />
+      <UserStats
+        users={usersForStats}
+        loading={loading}
+        providerVerificationTotal={providerVerificationTotal}
+        providerVerificationLoading={providerVerificationLoading}
+      />
 
       {/* Filters */}
       <UserFilters
@@ -179,8 +283,6 @@ export default function Users({ onUserClick, initialFilters = null }) {
                 <th>Status</th>
                 <th>Online</th>
                 <th>Contact</th>
-                <th>Verification</th>
-                <th>Created</th>
                 <th>Action</th>
               </tr>
             </thead>

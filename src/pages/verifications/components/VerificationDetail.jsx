@@ -14,6 +14,7 @@ export default function VerificationDetail({ request, onBack, onApprove, onRejec
   const [imageModal, setImageModal] = useState({ open: false, title: '', src: '' });
 
   const [resolvedUser, setResolvedUser] = useState(null);
+  const [profileUserinfo, setProfileUserinfo] = useState(null);
 
   const displayedRequest = liveRequest || request;
   const requestStatus = displayedRequest?.status || 'pending';
@@ -42,6 +43,19 @@ export default function VerificationDetail({ request, onBack, onApprove, onRejec
       cancelled = true;
     };
   }, [displayedRequest]);
+
+  useEffect(() => {
+    if (!resolvedUserId) {
+      setProfileUserinfo(null);
+      return;
+    }
+    const unsub = verificationService.subscribeToUserProfileUserinfo(resolvedUserId, (data) => {
+      setProfileUserinfo(data);
+    });
+    return () => {
+      if (unsub) unsub();
+    };
+  }, [resolvedUserId]);
 
   useEffect(() => {
     if (!request?.id) return;
@@ -89,6 +103,14 @@ export default function VerificationDetail({ request, onBack, onApprove, onRejec
   }, [status]);
 
   const isPending = status.toLowerCase() === 'pending';
+
+  const verificationDisplayName = useMemo(() => {
+    const fromProfile = (profileUserinfo?.fullName || profileUserinfo?.displayName || '').toString().trim();
+    if (fromProfile) return fromProfile;
+    const raw = (displayedRequest?.providerName || displayedRequest?.customerName || '').toString().trim();
+    if (raw && raw.toLowerCase() !== 'customer') return raw;
+    return 'N/A';
+  }, [profileUserinfo, displayedRequest]);
 
   const documents = displayedRequest?.documents || {};
   const licenseUrl = documents.licenseUrl || displayedRequest?.licenseImageUrl || displayedRequest?.licenseUrl || '';
@@ -193,7 +215,7 @@ export default function VerificationDetail({ request, onBack, onApprove, onRejec
             <div className="info-grid">
               <div className="info-row">
                 <span className="info-label">Name</span>
-                <span className="info-value">{displayedRequest?.providerName || displayedRequest?.customerName || 'N/A'}</span>
+                <span className="info-value">{verificationDisplayName}</span>
               </div>
               <div className="info-row">
                 <span className="info-label">User ID</span>

@@ -2,6 +2,8 @@
 
 export function createAdminModel(data = {}) {
   return {
+    /** Firestore document id in `adminUsers` (for updates from the dashboard). */
+    firestoreDocId: data.firestoreDocId ?? null,
     uid: data.uid ?? '',
     email: data.email ?? '',
     name: data.name ?? '',
@@ -15,7 +17,9 @@ export function createAdminModel(data = {}) {
 // Parse from Firestore
 export function adminFromFirestore(doc) {
   const data = doc.data ? doc.data() : doc;
+  const id = doc.id ?? data?.id ?? null;
   return createAdminModel({
+    firestoreDocId: id,
     uid: data?.uid ?? '',
     email: data?.email ?? '',
     name: data?.name ?? '',

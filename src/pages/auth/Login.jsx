@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../core/auth/AuthContext';
+import appLogo from '../../../assets/logo/appLogo.png';
 
 function Login() {
   const { login, loading, error, setError } = useAuth();
@@ -27,7 +28,13 @@ function Login() {
     <div className="auth-shell">
       <div className="auth-card">
         <div className="auth-card__header">
-          <div className="auth-logo">P</div>
+          <img
+            src={appLogo}
+            alt=""
+            className="auth-logo"
+            width={44}
+            height={44}
+          />
           <div>
             <h1 className="auth-title">Welcome to Pido Dashboard</h1>
             <p className="auth-subtitle">Sign in to continue</p>

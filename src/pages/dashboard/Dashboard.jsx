@@ -28,8 +28,11 @@ import BookingsChart from './components/BookingsChart.jsx';
 import RevenueChart from './components/RevenueChart.jsx';
 import ErrorState from './components/ErrorState.jsx';
 import InfoBox from './components/InfoBox.jsx';
+import { useAuth } from '../../core/auth/AuthContext';
 
 export default function Dashboard({ onNavigateToUsers }) {
+  const { adminTestMode } = useAuth();
+  const excludeTestUsers = !adminTestMode;
   const [userStats, setUserStats] = useState(null);
   const [bookingStats, setBookingStats] = useState(null);
   const [chartData, setChartData] = useState([]);
@@ -103,10 +106,11 @@ export default function Dashboard({ onNavigateToUsers }) {
     async function fetchData() {
       try {
         setLoading(true);
+        const statsOptions = { excludeTestUsers };
         const [users, bookings, chart] = await Promise.all([
-          getUserStats(),
-          getBookingStats(dateRange),
-          getBookingsChartData(revenueType, dateRange),
+          getUserStats(statsOptions),
+          getBookingStats(dateRange, statsOptions),
+          getBookingsChartData(revenueType, dateRange, statsOptions),
         ]);
         setUserStats(users);
         setBookingStats(bookings);
@@ -120,7 +124,7 @@ export default function Dashboard({ onNavigateToUsers }) {
     }
 
     fetchData();
-  }, [revenueType, dateFilter, customStart, customEnd]);
+  }, [revenueType, dateFilter, customStart, customEnd, excludeTestUsers]);
 
   if (error) {
     return <ErrorState message={error} onRetry={() => window.location.reload()} />;
@@ -131,6 +135,12 @@ export default function Dashboard({ onNavigateToUsers }) {
       <div className="dashboard-header">
         <h1>Dashboard Overview</h1>
         <p>Real-time insights into your platform performance</p>
+        {/* {excludeTestUsers && (
+          <p className="dashboard-exclude-test-hint">
+            Test users and bookings they participate in are hidden. Enable <strong>Test mode</strong> in Admin
+            Settings to include them.
+          </p>
+        )} */}
       </div>
 
       {/* User Stats Section */}

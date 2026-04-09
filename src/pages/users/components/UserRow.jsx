@@ -6,7 +6,7 @@ export default function UserRow({ user, onClick }) {
   const isOnline = user.isOnline === true;
   const isProvider = UserHelpers.isServiceProvider(user);
   const isCustomer = UserHelpers.isCustomer(user);
-  const displayName = UserHelpers.displayName(user) || 'Unknown User';
+  const nameLabel = UserHelpers.personName(user) || 'Unknown User';
 
   // Account status badge
   const getStatusBadge = () => {
@@ -27,19 +27,27 @@ export default function UserRow({ user, onClick }) {
       <td className="user-cell user-info-cell">
         <div className="user-row-info">
           <div className="user-row-avatar">
-            <User size={20} />
+            <User size={18} />
           </div>
           <div className="user-row-details">
-            <span className="user-row-name">{displayName}</span>
-            <span className="user-row-id">{user.uid?.substring(0, 12)}...</span>
+            <span className="user-row-name" title={user.uid || undefined}>
+              {nameLabel}
+            </span>
           </div>
         </div>
       </td>
       
-      <td className="user-cell">
-        <span className={`user-type ${isProvider ? 'provider' : isCustomer ? 'customer' : ''}`}>
-          {isProvider ? 'Service Provider' : isCustomer ? 'Customer' : 'Unknown'}
-        </span>
+      <td className="user-cell user-type-cell">
+        <div className="user-type-stack">
+          <span className={`user-type ${isProvider ? 'provider' : isCustomer ? 'customer' : ''}`}>
+            {isProvider ? 'Service Provider' : isCustomer ? 'Customer' : 'Unknown'}
+          </span>
+          {user.isTestUser === true ? (
+            <span className="user-row-test-pill" title="Test user (isTestUser)">
+              Test
+            </span>
+          ) : null}
+        </div>
       </td>
       
       <td className="user-cell">
@@ -52,21 +60,8 @@ export default function UserRow({ user, onClick }) {
         </span>
       </td>
       
-      <td className="user-cell contact-cell">
-        {user.phoneNumber || user.email || '-'}
-      </td>
-      
-      <td className="user-cell">
-        {user.isNumberVerified ? 
-          <span className="verified-badge">Verified</span> : 
-          <span className="unverified-badge">Unverified</span>
-        }
-      </td>
-      
-      <td className="user-cell date-cell">
-        {formatDate(user.createdAt)}
-      </td>
-      
+      <td className="user-cell contact-cell">{UserHelpers.contactDisplay(user)}</td>
+
       <td className="user-cell action-cell">
         <button className="view-user-btn" onClick={(e) => { e.stopPropagation(); onClick && onClick(user); }}>
           <ExternalLink size={16} />
@@ -75,15 +70,4 @@ export default function UserRow({ user, onClick }) {
       </td>
     </tr>
   );
-}
-
-function formatDate(timestamp) {
-  if (!timestamp) return '-';
-  if (timestamp.toDate) {
-    return timestamp.toDate().toLocaleDateString();
-  }
-  if (timestamp instanceof Date) {
-    return timestamp.toLocaleDateString();
-  }
-  return '-';
 }

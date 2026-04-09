@@ -1,5 +1,6 @@
 import React from 'react';
 import { useAuth } from '../../core/auth/AuthContext';
+import appLogo from '../../../assets/logo/appLogo.png';
 
 function Header({ onToggleSidebar, onOpenAdminSettings }) {
   const { adminProfile } = useAuth();
@@ -24,7 +25,13 @@ function Header({ onToggleSidebar, onOpenAdminSettings }) {
           <span></span>
           <span></span>
         </button>
-        <div className="app-header__logo">P</div>
+        <img
+          src={appLogo}
+          alt=""
+          className="app-header__logo"
+          width={32}
+          height={32}
+        />
         <span className="app-header__title">Pido Dashboard</span>
       </div>
       <div className="app-header__actions">

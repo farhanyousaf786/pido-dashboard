@@ -1,10 +1,18 @@
-import React, { useState } from 'react';
-import { ArrowLeft, User, Phone, MapPin, Calendar, Shield, CheckCircle, XCircle, Clock, Globe, Info, Bell } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowLeft, User, Phone, MapPin, Calendar, Shield, CheckCircle, XCircle, Clock, Globe, Info, Bell, FlaskConical, Loader2 } from 'lucide-react';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../../../core/firebase/firebaseConfig.js';
 import { UserHelpers } from '../../../core/models/User.js';
 import { notificationService } from '../../../core/services/notificationService.js';
 
-export default function UserDetail({ user, onBack }) {
+export default function UserDetail({ user, onBack, onUserPatch }) {
   const [loading, setLoading] = useState(false);
+  const [isTestUser, setIsTestUser] = useState(() => user?.isTestUser === true);
+  const [testUserSaving, setTestUserSaving] = useState(false);
+
+  useEffect(() => {
+    setIsTestUser(user?.isTestUser === true);
+  }, [user?.uid, user?.isTestUser]);
   const [pushForm, setPushForm] = useState({
     title: '',
     body: '',
@@ -14,12 +22,31 @@ export default function UserDetail({ user, onBack }) {
   const isOnline = user?.isOnline === true;
   const isProvider = UserHelpers.isServiceProvider(user);
   const isCustomer = UserHelpers.isCustomer(user);
-  const displayName = UserHelpers.displayName(user) || 'Unknown User';
+  const displayName = UserHelpers.personName(user) || 'Unknown User';
   const hasFcm = !!(user?.fcmToken && String(user.fcmToken).trim());
 
   const handlePushChange = (e) => {
     const { name, value } = e.target;
     setPushForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleTestUserToggle = async () => {
+    if (!user?.uid) return;
+    const next = !isTestUser;
+    setTestUserSaving(true);
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        isTestUser: next,
+        updatedAt: serverTimestamp(),
+      });
+      setIsTestUser(next);
+      onUserPatch?.({ isTestUser: next });
+    } catch (e) {
+      console.error('isTestUser update:', e);
+      window.alert(e?.message || 'Could not update test user flag. Check Firestore rules.');
+    } finally {
+      setTestUserSaving(false);
+    }
   };
 
   const handleSendPush = async () => {
@@ -105,6 +132,11 @@ export default function UserDetail({ user, onBack }) {
               <span className={`profile-type-badge ${isProvider ? 'provider' : isCustomer ? 'customer' : ''}`}>
                 {isProvider ? 'Service Provider' : isCustomer ? 'Customer' : 'Unknown Type'}
               </span>
+              {isTestUser ? (
+                <span className="profile-type-badge test-user-badge">
+                  <FlaskConical size={14} aria-hidden /> Test user
+                </span>
+              ) : null}
               {getStatusBadge()}
               <span className={`online-badge ${isOnline ? 'online' : 'offline'}`}>
                 <span className="online-dot" /> {isOnline ? 'Online' : 'Offline'}
@@ -193,6 +225,39 @@ export default function UserDetail({ user, onBack }) {
                 </span>
               </div>
             </div>
+          </div>
+
+          <div className="detail-section user-admin-section">
+            <h3 className="section-title">
+              <FlaskConical size={16} aria-hidden /> Admin
+            </h3>
+            <p className="user-admin-hint">
+              Mark accounts used for QA or staging. Filter the user list with <strong>Test users</strong> /{' '}
+              <strong>Production only</strong>.
+            </p>
+            <div className="user-admin-switch-row">
+              <div>
+                <span className="user-admin-switch-label">Test user</span>
+                <span className="user-admin-switch-sublabel">Firestore field <code className="monospace">isTestUser</code></span>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isTestUser}
+                aria-busy={testUserSaving}
+                disabled={testUserSaving}
+                className={`user-test-user-switch ${isTestUser ? 'user-test-user-switch--on' : ''}`}
+                onClick={handleTestUserToggle}
+              >
+                <span className="user-test-user-switch__thumb" />
+                <span className="visually-hidden">{isTestUser ? 'On' : 'Off'}</span>
+              </button>
+            </div>
+            {testUserSaving ? (
+              <p className="user-admin-saving">
+                <Loader2 size={14} className="spin" aria-hidden /> Saving…
+              </p>
+            ) : null}
           </div>
 
           {isProvider && (

@@ -2,7 +2,9 @@ import React, {
   createContext,
   useContext,
   useEffect,
+  useCallback,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -12,12 +14,20 @@ import {
 } from 'firebase/auth';
 import {
   collection,
+  doc,
   getDocs,
   query,
+  serverTimestamp,
+  updateDoc,
   where,
 } from 'firebase/firestore';
 import { auth, db } from '../firebase/firebaseConfig';
 import { createAdminModel } from '../models/Admin';
+import {
+  ADMIN_TEST_MODE_STORAGE_KEY,
+  readAdminTestModeFromStorage,
+  writeAdminTestModeToStorage,
+} from '../adminTestModeStorage.js';
 
 const AuthContext = createContext(null);
 
@@ -26,6 +36,29 @@ export function AuthProvider({ children }) {
   const [adminProfile, setAdminProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [adminTestMode, setAdminTestModeState] = useState(false);
+  const adminProfileRef = useRef(null);
+  adminProfileRef.current = adminProfile;
+
+  useEffect(() => {
+    setAdminTestModeState(readAdminTestModeFromStorage());
+  }, []);
+
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.storageArea !== localStorage) return;
+      if (e.key != null && e.key !== ADMIN_TEST_MODE_STORAGE_KEY) return;
+      setAdminTestModeState(readAdminTestModeFromStorage());
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  const setAdminTestMode = useCallback((enabled) => {
+    const next = Boolean(enabled);
+    writeAdminTestModeToStorage(next);
+    setAdminTestModeState(next);
+  }, []);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -71,6 +104,7 @@ export function AuthProvider({ children }) {
             setUser(firebaseUser);
             setAdminProfile(
               createAdminModel({
+                firestoreDocId: docSnap.id,
                 uid: data.uid || firebaseUser.uid,
                 email: data.email || firebaseUser.email,
                 name: data.name || firebaseUser.displayName || '',
@@ -104,9 +138,43 @@ export function AuthProvider({ children }) {
     await signOut(auth);
   };
 
+  const updateAdminName = useCallback(async (name) => {
+    const trimmed = (name ?? '').toString().trim();
+    setError('');
+    const profile = adminProfileRef.current;
+    if (!profile?.firestoreDocId) {
+      setError('Admin profile is not ready. Try again in a moment.');
+      return { success: false, error: 'Missing admin document' };
+    }
+    try {
+      const ref = doc(db, 'adminUsers', profile.firestoreDocId);
+      await updateDoc(ref, {
+        name: trimmed,
+        updatedAt: serverTimestamp(),
+      });
+      setAdminProfile((prev) => (prev ? { ...prev, name: trimmed } : null));
+      return { success: true };
+    } catch (e) {
+      const msg = e?.message || 'Failed to update name';
+      setError(msg);
+      return { success: false, error: msg };
+    }
+  }, []);
+
   const value = useMemo(
-    () => ({ user, adminProfile, loading, error, login, logout, setError }),
-    [user, adminProfile, loading, error],
+    () => ({
+      user,
+      adminProfile,
+      adminTestMode,
+      setAdminTestMode,
+      loading,
+      error,
+      login,
+      logout,
+      setError,
+      updateAdminName,
+    }),
+    [user, adminProfile, adminTestMode, loading, error, updateAdminName, setAdminTestMode],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

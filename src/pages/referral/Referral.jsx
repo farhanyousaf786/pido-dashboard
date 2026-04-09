@@ -20,7 +20,6 @@ import {
   collection,
   collectionGroup,
   doc,
-  getDoc,
   getDocs,
   limit,
   onSnapshot,
@@ -30,6 +29,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { db } from '../../core/firebase/firebaseConfig.js';
+import { fetchMergedUserProfile } from '../../core/services/userProfileMerge.js';
 
 function parseNumberOrNull(v) {
   if (v === '' || v == null) return null;
@@ -321,13 +321,7 @@ function mergeInviteRows(existing, incoming) {
   return out;
 }
 
-async function deleteReferralInviteDocuments(inv) {
-  const targets = inv.deleteTargets || [];
-  if (!targets.length) {
-    throw new Error(
-      'No Firestore document references on this row. Refresh the referral list and try again.'
-    );
-  }
+async function deleteReferralTargetsFlat(targets) {
   for (const t of targets) {
     if (t.type === 'referrals') {
       await deleteDoc(doc(db, 'users', t.referrerUid, 'referrals', t.docId));
@@ -337,11 +331,35 @@ async function deleteReferralInviteDocuments(inv) {
   }
 }
 
+async function deleteReferralInviteDocuments(inv) {
+  const targets = inv.deleteTargets || [];
+  if (!targets.length) {
+    throw new Error(
+      'No Firestore document references on this row. Refresh the referral list and try again.'
+    );
+  }
+  await deleteReferralTargetsFlat(targets);
+}
+
+/** All unique Firestore delete paths across every merged invite for this sender row. */
+function mergeAllDeleteTargetsForSenderRow(row) {
+  const m = new Map();
+  for (const inv of row.invites || []) {
+    for (const t of inv.deleteTargets || []) {
+      m.set(deleteTargetKey(t), t);
+    }
+  }
+  return [...m.values()];
+}
+
 const TABS = { config: 'config', breakdown: 'breakdown' };
 
 const GLOBAL_REFERRALS_LIMIT = 350;
 const GLOBAL_REFERRALS_USED_LIMIT = 350;
-const BOOKINGS_REFERRAL_SPEND_LIMIT = 120;
+/** Per customer: scan enough docs to match CreditWalletService + avoid random limit() missing rows. */
+const BOOKINGS_REFERRAL_SPEND_LIMIT = 500;
+/** How many booking docs to scan (each query) to find customers who spent credit but aren’t in the referral graph. */
+const BOOKINGS_DISCOVER_SPEND_LIMIT = 500;
 
 const DIALOG_TAB = { referrals: 'referrals', spending: 'spending' };
 
@@ -381,6 +399,48 @@ function pickBookingReferralCreditUsedOrApplied(raw) {
   const n = typeof val === 'number' ? val : Number(val);
   if (!Number.isFinite(n) || n <= 0) return null;
   return n;
+}
+
+/**
+ * Customers who have referral credit on at least one booking — includes people who never appear as
+ * referrerUid in referrals or referrals_used, same basis as the app wallet Applied to bookings list.
+ */
+async function fetchCustomerUidsWithReferralBookingSpend() {
+  const uids = new Set();
+  const seenDocIds = new Set();
+  const ingest = (snap) => {
+    snap.docs.forEach((d) => {
+      if (seenDocIds.has(d.id)) return;
+      const data = d.data() || {};
+      if (pickBookingReferralCreditUsedOrApplied(data) == null) return;
+      seenDocIds.add(d.id);
+      const cu = String(data.customerUid || data.customer_uid || '').trim();
+      if (cu) uids.add(cu);
+    });
+  };
+  try {
+    const [s1, s2] = await Promise.all([
+      getDocs(
+        query(
+          collection(db, 'bookings'),
+          where('referralCreditUsed', '>', 0),
+          limit(BOOKINGS_DISCOVER_SPEND_LIMIT)
+        )
+      ),
+      getDocs(
+        query(
+          collection(db, 'bookings'),
+          where('referralCreditApplied', '>', 0),
+          limit(BOOKINGS_DISCOVER_SPEND_LIMIT)
+        )
+      ),
+    ]);
+    ingest(s1);
+    ingest(s2);
+  } catch (e) {
+    console.error('fetchCustomerUidsWithReferralBookingSpend:', e);
+  }
+  return [...uids].sort();
 }
 
 async function fetchCustomerReferralSpendBookings(customerUid) {
@@ -423,28 +483,6 @@ async function fetchCustomerReferralSpendBookings(customerUid) {
   rows.sort((a, b) => b.sortKey - a.sortKey);
   const total = rows.reduce((s, r) => s + r.amount, 0);
   return { rows, total };
-}
-
-/**
- * Root `users/{uid}` often omits display fields; app stores them on `profile/userinfo`.
- * Merge profile over root so fullName / phoneNumber etc. resolve like the mobile app.
- */
-async function fetchMergedUserForReferral(uid) {
-  const u = String(uid || '').trim();
-  if (!u) return null;
-  try {
-    const [rootSnap, profileSnap] = await Promise.all([
-      getDoc(doc(db, 'users', u)),
-      getDoc(doc(db, 'users', u, 'profile', 'userinfo')),
-    ]);
-    const root = rootSnap.exists() ? rootSnap.data() || {} : {};
-    const profile = profileSnap.exists() ? profileSnap.data() || {} : {};
-    if (!rootSnap.exists() && !profileSnap.exists()) return null;
-    return { ...root, ...profile };
-  } catch (e) {
-    console.error('fetchMergedUserForReferral', u, e);
-    return null;
-  }
 }
 
 function mapReferralGroupDoc(d) {
@@ -493,9 +531,12 @@ export default function Referral({ onOpenBooking }) {
   const [usersHydrating, setUsersHydrating] = useState(false);
 
   const [referrerDetailDialog, setReferrerDetailDialog] = useState(null);
+  const [deletingReferrerUid, setDeletingReferrerUid] = useState(null);
 
   const [referralSpendByUid, setReferralSpendByUid] = useState({});
   const [referralSpendLoading, setReferralSpendLoading] = useState(false);
+  /** customerUid values found on bookings with referral credit (may have no referrals sub-docs). */
+  const [spendDiscoverUids, setSpendDiscoverUids] = useState([]);
 
   const loadGlobalReferralLists = useCallback(async () => {
     setGlobalListsLoading(true);
@@ -520,11 +561,30 @@ export default function Referral({ onOpenBooking }) {
     }
   }, []);
 
+  const loadSpendDiscovery = useCallback(async () => {
+    try {
+      const uids = await fetchCustomerUidsWithReferralBookingSpend();
+      setSpendDiscoverUids(uids);
+    } catch (e) {
+      console.error('Referral spend discovery:', e);
+      setSpendDiscoverUids([]);
+    }
+  }, []);
+
   useEffect(() => {
     if (activeTab !== TABS.breakdown) return undefined;
     loadGlobalReferralLists();
     return undefined;
   }, [activeTab, loadGlobalReferralLists]);
+
+  useEffect(() => {
+    if (activeTab !== TABS.breakdown) {
+      setSpendDiscoverUids([]);
+      return undefined;
+    }
+    void loadSpendDiscovery();
+    return undefined;
+  }, [activeTab, loadSpendDiscovery]);
 
   const invitesByReferrer = useMemo(() => {
     const byReferrer = new Map();
@@ -552,13 +612,21 @@ export default function Referral({ onOpenBooking }) {
 
   const senderRows = useMemo(() => {
     const rows = [];
+    const seen = new Set();
     for (const [referrerUid, inviteMap] of invitesByReferrer.entries()) {
       const invites = Array.from(inviteMap.values());
       rows.push({ referrerUid, invites, inviteCount: invites.length });
+      seen.add(referrerUid);
+    }
+    for (const uid of spendDiscoverUids) {
+      const u = String(uid || '').trim();
+      if (!u || u === '—' || seen.has(u)) continue;
+      rows.push({ referrerUid: u, invites: [], inviteCount: 0 });
+      seen.add(u);
     }
     rows.sort((a, b) => b.inviteCount - a.inviteCount || a.referrerUid.localeCompare(b.referrerUid));
     return rows;
-  }, [invitesByReferrer]);
+  }, [invitesByReferrer, spendDiscoverUids]);
 
   const referrerUidsKey = useMemo(
     () =>
@@ -610,7 +678,10 @@ export default function Referral({ onOpenBooking }) {
       if (r.referrerUid && r.referrerUid !== '—') ids.add(String(r.referrerUid));
       if (r.refereeUid && r.refereeUid !== '—') ids.add(String(r.refereeUid));
     }
-    const uids = [...ids].filter(Boolean).slice(0, 400);
+    for (const uid of spendDiscoverUids) {
+      if (uid && uid !== '—') ids.add(String(uid));
+    }
+    const uids = [...ids].filter(Boolean).slice(0, 500);
     if (!uids.length) {
       setUserByUid({});
       return;
@@ -622,7 +693,7 @@ export default function Referral({ onOpenBooking }) {
       const next = {};
       for (const chunk of chunks) {
         /* eslint-disable no-await-in-loop */
-        const merged = await Promise.all(chunk.map((uid) => fetchMergedUserForReferral(uid)));
+        const merged = await Promise.all(chunk.map((uid) => fetchMergedUserProfile(uid)));
         merged.forEach((data, j) => {
           const uid = chunk[j];
           if (data) next[uid] = data;
@@ -634,15 +705,50 @@ export default function Referral({ onOpenBooking }) {
     } finally {
       setUsersHydrating(false);
     }
-  }, [globalReferrals, globalReferralsUsed]);
+  }, [globalReferrals, globalReferralsUsed, spendDiscoverUids]);
 
   useEffect(() => {
     if (activeTab !== TABS.breakdown) return undefined;
     hydrateUserDocs();
     return undefined;
-  }, [activeTab, globalReferrals, globalReferralsUsed, hydrateUserDocs]);
+  }, [activeTab, globalReferrals, globalReferralsUsed, spendDiscoverUids, hydrateUserDocs]);
 
   const closeReferrerDetailDialog = useCallback(() => setReferrerDetailDialog(null), []);
+
+  const handleDeleteSenderRow = useCallback(
+    async (row) => {
+      const targets = mergeAllDeleteTargetsForSenderRow(row);
+      if (!targets.length) {
+        window.alert(
+          'No referral documents to delete for this row. It may be spend-only (bookings only) with no referrals or referrals_used in the loaded batch — remove data in Firestore if you still need to clean it up.'
+        );
+        return;
+      }
+      const n = targets.length;
+      const ud = userByUid[row.referrerUid];
+      const label = displayPersonNameOnly(ud, row.referrerUid);
+      if (
+        !window.confirm(
+          `Delete all referral link documents for this referrer?\n\nThis removes ${n} Firestore document(s) (referrals and/or referrals_used). This cannot be undone.\n\nReferrer: ${label}\nUID: ${row.referrerUid}`
+        )
+      ) {
+        return;
+      }
+      try {
+        setDeletingReferrerUid(row.referrerUid);
+        await deleteReferralTargetsFlat(targets);
+        await loadGlobalReferralLists();
+        await loadSpendDiscovery();
+        setReferrerDetailDialog((prev) => (prev?.referrerUid === row.referrerUid ? null : prev));
+      } catch (e) {
+        console.error('Delete sender referral row:', e);
+        window.alert(e?.message || 'Delete failed. Check Firestore rules and console.');
+      } finally {
+        setDeletingReferrerUid(null);
+      }
+    },
+    [userByUid, loadGlobalReferralLists, loadSpendDiscovery]
+  );
 
   useEffect(() => {
     setConfigLoading(true);
@@ -801,12 +907,12 @@ export default function Referral({ onOpenBooking }) {
               <div className="booking-profile-header">
                 <div className="booking-profile-info">
                   <h2 className="booking-profile-name">Referral Config</h2>
-                  <div className="booking-profile-badges">
+                  {/* <div className="booking-profile-badges">
                     <span className="booking-badge neutral monospace">Doc: {docId}</span>
                     {raw?.amount != null && (
                       <span className="booking-badge neutral">Legacy amount: {String(raw.amount)}</span>
                     )}
-                  </div>
+                  </div> */}
                 </div>
 
                 <div className="booking-detail-header-actions">
@@ -937,28 +1043,22 @@ export default function Referral({ onOpenBooking }) {
 
       {activeTab === TABS.breakdown && (
         <div className="referral-breakdown">
-          <div className="referral-breakdown__toolbar referral-breakdown__toolbar--split">
+          <div className="referral-breakdown__toolbar">
             <button
               type="button"
               className="bookings-action-btn"
-              onClick={loadGlobalReferralLists}
+              onClick={() => {
+                loadGlobalReferralLists();
+                void loadSpendDiscovery();
+              }}
               disabled={globalListsLoading}
             >
               {globalListsLoading ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />}
               <span>{globalListsLoading ? 'Refreshing…' : 'Refresh'}</span>
             </button>
-            <span className="referral-breakdown__limits">
-              Up to {GLOBAL_REFERRALS_LIMIT} referral links and {GLOBAL_REFERRALS_USED_LIMIT} signup rows per load.
-              {usersHydrating ? ' Loading customer profiles…' : ''}
-              <span className="referral-breakdown__limits-detail">
-                Counts merge (1) docs under <code>users/&lt;referrer&gt;/referrals</code> and (2){' '}
-                <code>users/&lt;someone&gt;/referrals_used</code> where <code>referrerUid</code> matches — so you
-                can see referrals even when the referrer has no <code>referrals</code> subcollection. Credits =
-                <code>credit_amount</code>. Spending sums <code>bookings</code> where <code>customerUid</code> is
-                this referrer, using <code>referralCreditUsed</code> or <code>referralCreditApplied</code> (up to{' '}
-                {BOOKINGS_REFERRAL_SPEND_LIMIT} bookings per person).
-              </span>
-            </span>
+            {usersHydrating ? (
+              <span className="referral-breakdown__hydrating">Loading customer profiles…</span>
+            ) : null}
           </div>
 
           {globalListsError && (
@@ -980,6 +1080,8 @@ export default function Referral({ onOpenBooking }) {
               userByUid={userByUid}
               referralSpendByUid={referralSpendByUid}
               referralSpendLoading={referralSpendLoading}
+              deletingReferrerUid={deletingReferrerUid}
+              onDeleteRow={handleDeleteSenderRow}
               onView={(row) =>
                 setReferrerDetailDialog({
                   referrerUid: row.referrerUid,
@@ -1138,7 +1240,7 @@ function ReferrerDetailDialog({
         await Promise.all(
           missing.map(async (uid) => {
             try {
-              const data = await fetchMergedUserForReferral(uid);
+              const data = await fetchMergedUserProfile(uid);
               if (data) next[uid] = data;
             } catch {
               /* ignore */
@@ -1398,7 +1500,15 @@ function ReferrerDetailDialog({
   );
 }
 
-function ReferrerListTable({ rows, userByUid, referralSpendByUid, referralSpendLoading, onView }) {
+function ReferrerListTable({
+  rows,
+  userByUid,
+  referralSpendByUid,
+  referralSpendLoading,
+  onView,
+  onDeleteRow,
+  deletingReferrerUid,
+}) {
   if (!rows?.length) {
     return (
       <p className="referral-breakdown__muted">
@@ -1416,7 +1526,7 @@ function ReferrerListTable({ rows, userByUid, referralSpendByUid, referralSpendL
             <th>Credits</th>
             <th>Referrals</th>
             <th>Spending</th>
-            <th />
+            <th className="referral-people-table__actions-head">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -1431,6 +1541,10 @@ function ReferrerListTable({ rows, userByUid, referralSpendByUid, referralSpendL
             ) : (
               '—'
             );
+            const deleteTargets = mergeAllDeleteTargetsForSenderRow(row);
+            const canDelete = deleteTargets.length > 0;
+            const isDeleting = deletingReferrerUid === row.referrerUid;
+            const deleteBlocked = Boolean(deletingReferrerUid && deletingReferrerUid !== row.referrerUid);
             return (
               <tr key={row.referrerUid}>
                 <td>{displayPersonNameOnly(ud, row.referrerUid)}</td>
@@ -1439,14 +1553,36 @@ function ReferrerListTable({ rows, userByUid, referralSpendByUid, referralSpendL
                 <td>{count}</td>
                 <td className="referral-spend-table__credit">{spendCell}</td>
                 <td>
-                  <button
-                    type="button"
-                    className="referral-view-btn"
-                    onClick={() => onView(row)}
-                  >
-                    <ExternalLink size={14} aria-hidden />
-                    View detail
-                  </button>
+                  <div className="referral-people-table__actions">
+                    <button
+                      type="button"
+                      className="referral-view-btn"
+                      onClick={() => onView(row)}
+                      disabled={isDeleting}
+                    >
+                      <ExternalLink size={14} aria-hidden />
+                      View detail
+                    </button>
+                    <button
+                      type="button"
+                      className="referral-row-delete-btn"
+                      title={
+                        canDelete
+                          ? 'Delete all referrals and referrals_used documents for this referrer (from loaded batch)'
+                          : 'No referral docs in this batch — row may be spend-only on bookings'
+                      }
+                      aria-label="Delete referral documents for this user"
+                      disabled={!canDelete || isDeleting || deleteBlocked}
+                      onClick={() => onDeleteRow?.(row)}
+                    >
+                      {isDeleting ? (
+                        <Loader2 size={14} className="spin" aria-hidden />
+                      ) : (
+                        <Trash2 size={14} aria-hidden />
+                      )}
+                      Delete
+                    </button>
+                  </div>
                 </td>
               </tr>
             );

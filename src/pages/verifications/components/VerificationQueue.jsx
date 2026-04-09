@@ -1,5 +1,13 @@
 import React, { useState } from 'react';
-import { CheckCircle, XCircle, Clock, ExternalLink, Trash2, AlertTriangle } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, ExternalLink, Trash2, AlertTriangle, ShieldCheck } from 'lucide-react';
+
+function verificationRequestDisplayName(request) {
+  const fromProfile = (request.resolvedProfileFullName || '').toString().trim();
+  if (fromProfile) return fromProfile;
+  const raw = (request.providerName || request.customerName || '').toString().trim();
+  if (raw && raw.toLowerCase() !== 'customer') return raw;
+  return 'N/A';
+}
 
 export default function VerificationQueue({ requests, loading, onView, statusOverrides = {} }) {
   const [selected, setSelected] = useState([]);
@@ -133,7 +141,7 @@ export default function VerificationQueue({ requests, loading, onView, statusOve
                         onChange={() => handleSelectOne(request.id)}
                       />
                     </td>
-                    <td className="name-cell">{request.providerName || request.customerName || 'N/A'}</td>
+                    <td className="name-cell">{verificationRequestDisplayName(request)}</td>
                     <td>{getUserTypeBadge(request.userType)}</td>
                     <td className="contact-cell">{contactInfo}</td>
                     <td className="date-cell">{formatDate(request.submittedAt)}</td>

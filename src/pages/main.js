@@ -11,6 +11,7 @@ import VerificationsPage from './verifications/Verifications';
 import NotificationsPage from './notifications/Notifications';
 import ReferralPage from './referral/Referral';
 import SettingsPage from './settings/Settings';
+import AdminSettingsPage from './settings/AdminSettings';
 import { useAuth } from '../core/auth/AuthContext';
 import Login from './auth/Login';
 
@@ -65,7 +66,13 @@ function Main() {
           />
         );
       case PAGES.userDetail:
-        return <UserDetailPage user={selectedUser} onBack={() => handleNavigate(PAGES.users)} />;
+        return (
+          <UserDetailPage
+            user={selectedUser}
+            onBack={() => handleNavigate(PAGES.users)}
+            onUserPatch={(patch) => setSelectedUser((u) => (u ? { ...u, ...patch } : u))}
+          />
+        );
       case PAGES.bookings:
         return (
           <BookingsPage
@@ -92,7 +99,7 @@ function Main() {
       case PAGES.settings:
         return <SettingsPage />;
       case PAGES.adminSettings:
-        return <SettingsPage />; // placeholder until dedicated admin settings page exists
+        return <AdminSettingsPage />;
       case PAGES.dashboard:
       default:
         return <DashboardPage onNavigateToUsers={handleNavigateToUsersWithFilters} />;

@@ -73,6 +73,26 @@ export default function UserFilters({
           </select>
         </div>
 
+        {/* Test user (isTestUser) */}
+        <div className="filter-group">
+          <select
+            value={
+              filters.isTestUser === undefined ? '' : filters.isTestUser === true ? 'true' : 'false'
+            }
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === '') handleChange('isTestUser', undefined);
+              else handleChange('isTestUser', v === 'true');
+            }}
+            className="filter-select"
+            aria-label="Filter by test user flag"
+          >
+            <option value="">All users</option>
+            <option value="true">Test users only</option>
+            <option value="false">Production only</option>
+          </select>
+        </div>
+
         {/* Refresh Button */}
         <button 
           onClick={onRefresh} 
@@ -84,7 +104,10 @@ export default function UserFilters({
       </div>
 
       {/* Active Filters Summary */}
-      {(filters.userType || filters.isOnline !== undefined || filters.accountStatus) && (
+      {(filters.userType ||
+        filters.isOnline !== undefined ||
+        filters.accountStatus ||
+        filters.isTestUser !== undefined) && (
         <div className="active-filters">
           <span>Active filters:</span>
           {filters.userType && (
@@ -102,6 +125,8 @@ export default function UserFilters({
               Account: {filters.accountStatus}
             </span>
           )}
+          {filters.isTestUser === true && <span className="filter-tag">Test users only</span>}
+          {filters.isTestUser === false && <span className="filter-tag">Production only</span>}
           <button 
             onClick={() => onFilterChange({})} 
             className="clear-filters-btn"

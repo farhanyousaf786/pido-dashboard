@@ -2,6 +2,8 @@ import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { ShieldCheck, Users, Briefcase, AlertCircle } from 'lucide-react';
 import { verificationService } from '../../core/services/verificationService';
 import { dedupeVerificationRequests } from '../../core/services/verificationRequestDedupe.js';
+import { fetchTestUserUidSet } from '../../core/services/dashboardService.js';
+import { useAuth } from '../../core/auth/AuthContext';
 import VerificationQueue from './components/VerificationQueue.jsx';
 import VerificationDetail from './components/VerificationDetail.jsx';
 
@@ -12,6 +14,9 @@ const TABS = {
 };
 
 export default function Verifications() {
+  const { adminTestMode } = useAuth();
+  const excludeTestUsers = !adminTestMode;
+
   const [activeTab, setActiveTab] = useState(TABS.providers);
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -22,6 +27,8 @@ export default function Verifications() {
   const [orphanRequestIds, setOrphanRequestIds] = useState({});
   const userUnsubscribersRef = useRef(new Map());
   const providerUserUnsubscribersRef = useRef(new Map());
+  const profileUnsubscribersRef = useRef(new Map());
+  const [profileNameByRequestId, setProfileNameByRequestId] = useState({});
   const [customerSyncState, setCustomerSyncState] = useState({
     loading: false,
     message: null,
@@ -32,8 +39,53 @@ export default function Verifications() {
     approved: 0,
     rejected: 0,
   });
+  const [hideTestVerificationIds, setHideTestVerificationIds] = useState(() => new Set());
 
   const dedupedRequests = useMemo(() => dedupeVerificationRequests(requests), [requests]);
+
+  useEffect(() => {
+    if (!excludeTestUsers) {
+      setHideTestVerificationIds(new Set());
+      return;
+    }
+
+    let cancelled = false;
+
+    const run = async () => {
+      let testUids;
+      try {
+        testUids = await fetchTestUserUidSet();
+      } catch (e) {
+        console.error('Verifications test-user filter:', e);
+        if (!cancelled) setHideTestVerificationIds(new Set());
+        return;
+      }
+      if (cancelled) return;
+
+      const resolved = await Promise.all(
+        dedupedRequests.map(async (req) => {
+          try {
+            const userId = await verificationService.resolveUserIdFromRequestData(req, req.id);
+            return { id: req.id, userId };
+          } catch {
+            return { id: req.id, userId: null };
+          }
+        })
+      );
+      if (cancelled) return;
+
+      const hide = new Set();
+      for (const { id, userId } of resolved) {
+        if (userId && testUids.has(userId)) hide.add(id);
+      }
+      setHideTestVerificationIds(hide);
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [dedupedRequests, excludeTestUsers]);
 
   // Subscribe to real-time verification requests
   useEffect(() => {
@@ -72,6 +124,24 @@ export default function Verifications() {
       // Cleanup subscriptions that are no longer needed
       const activeCustomerRequestIds = new Set(customerRequests.map((r) => r.id));
       const activeProviderRequestIds = new Set(providerRequests.map((r) => r.id));
+      const activeAnyRequestIds = new Set([...activeCustomerRequestIds, ...activeProviderRequestIds]);
+
+      for (const [requestId, unsub] of profileUnsubscribersRef.current.entries()) {
+        if (!activeAnyRequestIds.has(requestId)) {
+          try {
+            unsub();
+          } catch {
+            // ignore
+          }
+          profileUnsubscribersRef.current.delete(requestId);
+          setProfileNameByRequestId((prev) => {
+            if (!(requestId in prev)) return prev;
+            const next = { ...prev };
+            delete next[requestId];
+            return next;
+          });
+        }
+      }
 
       for (const [requestId, unsub] of userUnsubscribersRef.current.entries()) {
         if (!activeCustomerRequestIds.has(requestId)) {
@@ -162,6 +232,17 @@ export default function Verifications() {
           });
 
           userUnsubscribersRef.current.set(req.id, unsub);
+
+          const unsubProfile = verificationService.subscribeToUserProfileUserinfo(userId, (data) => {
+            const name = (data?.fullName || data?.displayName || '').toString().trim();
+            setProfileNameByRequestId((prev) => {
+              const next = { ...prev };
+              if (name) next[req.id] = name;
+              else delete next[req.id];
+              return next;
+            });
+          });
+          profileUnsubscribersRef.current.set(req.id, unsubProfile);
         });
       }
 
@@ -208,6 +289,17 @@ export default function Verifications() {
         });
 
         providerUserUnsubscribersRef.current.set(req.id, unsub);
+
+        const unsubProfile = verificationService.subscribeToUserProfileUserinfo(userId, (data) => {
+          const name = (data?.fullName || data?.displayName || '').toString().trim();
+          setProfileNameByRequestId((prev) => {
+            const next = { ...prev };
+            if (name) next[req.id] = name;
+            else delete next[req.id];
+            return next;
+          });
+        });
+        profileUnsubscribersRef.current.set(req.id, unsubProfile);
       });
     };
 
@@ -233,6 +325,15 @@ export default function Verifications() {
         }
       }
       providerUserUnsubscribersRef.current.clear();
+
+      for (const unsub of profileUnsubscribersRef.current.values()) {
+        try {
+          unsub();
+        } catch {
+          // ignore
+        }
+      }
+      profileUnsubscribersRef.current.clear();
     };
   }, [dedupedRequests]);
 
@@ -279,6 +380,7 @@ export default function Verifications() {
       const approvedCustomers = dedupedRequests.filter((req) => {
         const isCustomer = req.userType === 'customer' || req.userType === 'user';
         const status = (req.status ?? '').toString().trim().toLowerCase();
+        if (excludeTestUsers && hideTestVerificationIds.has(req.id)) return false;
         return isCustomer && status === 'approved';
       });
 
@@ -364,6 +466,8 @@ export default function Verifications() {
     const normalizeEmail = (value) => (value || '').toString().trim().toLowerCase();
 
     return filteredRequests.filter((req) => {
+      if (excludeTestUsers && hideTestVerificationIds.has(req.id)) return false;
+
       const isCustomer = req.userType === 'customer' || req.userType === 'user';
       if (!isCustomer) return true;
 
@@ -386,7 +490,23 @@ export default function Verifications() {
 
       return true;
     });
-  }, [filteredRequests, orphanRequestIds, activeTab, providerIdentitySet]);
+  }, [
+    filteredRequests,
+    orphanRequestIds,
+    activeTab,
+    providerIdentitySet,
+    excludeTestUsers,
+    hideTestVerificationIds,
+  ]);
+
+  const queueRequests = useMemo(
+    () =>
+      visibleRequests.map((r) => ({
+        ...r,
+        resolvedProfileFullName: profileNameByRequestId[r.id] || null,
+      })),
+    [visibleRequests, profileNameByRequestId]
+  );
 
   const displayedStats = useMemo(() => {
     const next = { pending: 0, approved: 0, rejected: 0, total: 0 };
@@ -446,6 +566,12 @@ export default function Verifications() {
           <div>
             <h1>Verifications</h1>
             <p>Review and manage provider & customer verification requests</p>
+            {/* {excludeTestUsers && (
+              <p className="dashboard-exclude-test-hint">
+                Requests linked to users with <code className="admin-settings__code">isTestUser</code> are hidden.
+                Turn on <strong>Test mode</strong> in Admin Settings to see them.
+              </p>
+            )} */}
           </div>
         </div>
       </div>
@@ -530,7 +656,7 @@ export default function Verifications() {
 
       {/* Queue */}
       <VerificationQueue
-        requests={visibleRequests}
+        requests={queueRequests}
         statusOverrides={effectiveStatusByRequestId}
         loading={loading}
         onView={handleViewRequest}

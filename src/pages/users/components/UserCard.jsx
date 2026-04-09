@@ -6,7 +6,7 @@ export default function UserCard({ user }) {
   const isOnline = user.isOnline === true;
   const isProvider = UserHelpers.isServiceProvider(user);
   const isCustomer = UserHelpers.isCustomer(user);
-  const displayName = UserHelpers.displayName(user) || 'Unknown User';
+  const nameLabel = UserHelpers.personName(user) || 'Unknown User';
   
   // Account status badge
   const getStatusBadge = () => {
@@ -35,8 +35,8 @@ export default function UserCard({ user }) {
       </div>
 
       <div className="user-card-body">
-        <h3 className="user-name">{displayName}</h3>
-        <p className="user-email">{user.email || user.phoneNumber || 'No contact info'}</p>
+        <h3 className="user-name">{nameLabel}</h3>
+        <p className="user-email">{UserHelpers.contactDisplay(user)}</p>
 
         <div className="user-type-badges">
           <span className={`type-badge ${isProvider ? 'provider' : isCustomer ? 'customer' : 'unknown'}`}>
