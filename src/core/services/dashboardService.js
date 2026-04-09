@@ -11,6 +11,7 @@ import {
   Timestamp,
   onSnapshot,
 } from 'firebase/firestore';
+import { verificationService } from './verificationService.js';
 
 // Collection references
 const usersRef = collection(db, 'users');
@@ -39,10 +40,15 @@ export async function getUserStats() {
     const totalSnapshot = await getCountFromServer(usersRef);
     const totalUsers = totalSnapshot.data().count;
 
-    // Service providers
-    const providersQuery = query(usersRef, where('userType', '==', 'serviceProvider'));
-    const providersSnapshot = await getCountFromServer(providersQuery);
-    const totalProviders = providersSnapshot.data().count;
+    // Service providers — same basis as Verifications → Providers total (deduped queue + linked user)
+    let totalProviders = 0;
+    try {
+      const verificationRequestsList = await verificationService.fetchVerificationRequestsList();
+      totalProviders = await verificationService.countLinkedDedupedProviders(verificationRequestsList);
+    } catch (e) {
+      console.error('Dashboard provider verification count:', e);
+      totalProviders = 0;
+    }
 
     // Customers
     const customersQuery = query(usersRef, where('userType', '==', 'customer'));

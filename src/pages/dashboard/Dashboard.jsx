@@ -162,7 +162,7 @@ export default function Dashboard({ onNavigateToUsers }) {
               <StatCard
                 title="Service Providers"
                 value={userStats?.totalProviders || 0}
-                subtitle="Active professionals"
+                subtitle="Verification queue (deduped, linked accounts)"
                 icon={Briefcase}
                 color="orange"
                 onClick={() => onNavigateToUsers && onNavigateToUsers({ userType: 'serviceProvider' })}

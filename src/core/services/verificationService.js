@@ -13,6 +13,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig.js';
+import { dedupeVerificationRequests } from './verificationRequestDedupe.js';
 
 export const verificationService = {
   resolveUserIdFromRequestData: async (data, requestId) => {
@@ -288,5 +289,40 @@ export const verificationService = {
       console.error('Error deleting requests:', error);
       return { success: false, error: error.message };
     }
+  },
+
+  /** Same query as subscribeToVerificationRequests (no realtime). */
+  fetchVerificationRequestsList: async () => {
+    try {
+      const q = query(collection(db, 'verificationRequests'), orderBy('submittedAt', 'desc'));
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    } catch (error) {
+      console.error('Error fetching verification requests list:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Count on Verifications → Providers matches displayedStats.total: deduped provider requests
+   * that resolve to an existing users/{uid} doc (non-orphan), same as the stats bar pipeline.
+   */
+  countLinkedDedupedProviders: async (requests) => {
+    if (!requests?.length) return 0;
+    const deduped = dedupeVerificationRequests(requests);
+    const providers = deduped.filter((r) => r.userType === 'serviceProvider');
+    const results = await Promise.all(
+      providers.map(async (req) => {
+        try {
+          const userId = await verificationService.resolveUserIdFromRequestData(req, req.id);
+          if (!userId) return false;
+          const userSnap = await getDoc(doc(db, 'users', userId));
+          return userSnap.exists();
+        } catch {
+          return false;
+        }
+      })
+    );
+    return results.filter(Boolean).length;
   },
 };

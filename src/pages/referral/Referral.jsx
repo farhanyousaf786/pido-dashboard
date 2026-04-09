@@ -118,6 +118,7 @@ function displayPersonNameOnly(userData, uid) {
   const composedName = fn && ln ? `${fn} ${ln}` : fn || ln;
   const label =
     strTrim(userData.fullName) ||
+    strTrim(userData.full_name) ||
     strTrim(userData.displayName) ||
     strTrim(userData.name) ||
     strTrim(userData.customerName) ||
@@ -135,12 +136,21 @@ function formatUserContactLine(userData) {
 
 function pickUserEmail(userData) {
   if (!userData) return '';
-  return strTrim(userData.email || userData.emailAddress);
+  return strTrim(userData.email || userData.emailAddress || userData.email_address);
 }
 
 function pickUserPhone(userData) {
   if (!userData) return '';
-  return strTrim(userData.phoneNumber || userData.phone || userData.mobile || userData.mobilePhone || userData.mobileNumber);
+  return strTrim(
+    userData.phoneNumber ||
+      userData.phone_number ||
+      userData.phone ||
+      userData.mobile ||
+      userData.mobilePhone ||
+      userData.mobile_phone ||
+      userData.mobileNumber ||
+      userData.mobile_number
+  );
 }
 
 /** Second line: show email/phone not already used as primary, or full UID if we only have a stub. */
@@ -415,6 +425,28 @@ async function fetchCustomerReferralSpendBookings(customerUid) {
   return { rows, total };
 }
 
+/**
+ * Root `users/{uid}` often omits display fields; app stores them on `profile/userinfo`.
+ * Merge profile over root so fullName / phoneNumber etc. resolve like the mobile app.
+ */
+async function fetchMergedUserForReferral(uid) {
+  const u = String(uid || '').trim();
+  if (!u) return null;
+  try {
+    const [rootSnap, profileSnap] = await Promise.all([
+      getDoc(doc(db, 'users', u)),
+      getDoc(doc(db, 'users', u, 'profile', 'userinfo')),
+    ]);
+    const root = rootSnap.exists() ? rootSnap.data() || {} : {};
+    const profile = profileSnap.exists() ? profileSnap.data() || {} : {};
+    if (!rootSnap.exists() && !profileSnap.exists()) return null;
+    return { ...root, ...profile };
+  } catch (e) {
+    console.error('fetchMergedUserForReferral', u, e);
+    return null;
+  }
+}
+
 function mapReferralGroupDoc(d) {
   const referrerUid = d.ref.parent?.parent?.id ?? '—';
   const data = d.data() || {};
@@ -590,10 +622,10 @@ export default function Referral({ onOpenBooking }) {
       const next = {};
       for (const chunk of chunks) {
         /* eslint-disable no-await-in-loop */
-        const snaps = await Promise.all(chunk.map((uid) => getDoc(doc(db, 'users', uid))));
-        snaps.forEach((s, j) => {
+        const merged = await Promise.all(chunk.map((uid) => fetchMergedUserForReferral(uid)));
+        merged.forEach((data, j) => {
           const uid = chunk[j];
-          if (s.exists()) next[uid] = s.data();
+          if (data) next[uid] = data;
         });
       }
       setUserByUid(next);
@@ -1106,8 +1138,8 @@ function ReferrerDetailDialog({
         await Promise.all(
           missing.map(async (uid) => {
             try {
-              const snap = await getDoc(doc(db, 'users', uid));
-              if (snap.exists()) next[uid] = snap.data();
+              const data = await fetchMergedUserForReferral(uid);
+              if (data) next[uid] = data;
             } catch {
               /* ignore */
             }
