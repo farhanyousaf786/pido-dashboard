@@ -50,11 +50,29 @@ export function createBookingModel(data = {}) {
     platform: data.platform ?? 'mobile',
     appVersion: data.appVersion ?? '1.0.0',
 
-    // Workspace
+    // Workspace (customer workspace photos — fields live on booking doc)
     workspaceImageUrl: data.workspaceImageUrl ?? null,
+    workspacePhotos: Array.isArray(data.workspacePhotos)
+      ? data.workspacePhotos.filter(Boolean)
+      : data.workspacePhotos
+        ? [data.workspacePhotos].flat()
+        : [],
     workspaceVerified: data.workspaceVerified ?? false,
+    workspaceVerifiedAt: data.workspaceVerifiedAt ?? null,
     workspaceVerifiedBy: data.workspaceVerifiedBy ?? null,
+    workspaceProviderNotes: data.workspaceProviderNotes ?? null,
+    workspaceAdminNotes: data.workspaceAdminNotes ?? null,
     workspaceRejectionReason: data.workspaceRejectionReason ?? null,
+    workspaceRejectedAt: data.workspaceRejectedAt ?? null,
+    workspaceRejectedBy: data.workspaceRejectedBy ?? null,
+
+    // GPS / location check (same doc; not workspace photo approval)
+    locationVerified: data.locationVerified ?? null,
+    verifiedDistance: data.verifiedDistance ?? null,
+    verifiedLatitude: data.verifiedLatitude ?? null,
+    verifiedLongitude: data.verifiedLongitude ?? null,
+    verifiedAt: data.verifiedAt ?? null,
+    verificationMethod: data.verificationMethod ?? null,
 
     // Services
     selectedServices: data.selectedServices ?? [],
@@ -149,9 +167,26 @@ export function bookingFromFirestore(doc) {
 
     // Workspace
     workspaceImageUrl: data?.workspaceImageUrl ?? null,
+    workspacePhotos: Array.isArray(data?.workspacePhotos)
+      ? data.workspacePhotos.filter(Boolean)
+      : data?.workspacePhotos
+        ? [data.workspacePhotos].flat()
+        : [],
     workspaceVerified: data?.workspaceVerified ?? false,
+    workspaceVerifiedAt: parseTimestamp(data?.workspaceVerifiedAt),
     workspaceVerifiedBy: data?.workspaceVerifiedBy ?? null,
+    workspaceProviderNotes: data?.workspaceProviderNotes ?? null,
+    workspaceAdminNotes: data?.workspaceAdminNotes ?? null,
     workspaceRejectionReason: data?.workspaceRejectionReason ?? null,
+    workspaceRejectedAt: parseTimestamp(data?.workspaceRejectedAt),
+    workspaceRejectedBy: data?.workspaceRejectedBy ?? null,
+
+    locationVerified: data?.locationVerified ?? null,
+    verifiedDistance: parseDouble(data?.verifiedDistance),
+    verifiedLatitude: parseDouble(data?.verifiedLatitude),
+    verifiedLongitude: parseDouble(data?.verifiedLongitude),
+    verifiedAt: parseTimestamp(data?.verifiedAt),
+    verificationMethod: data?.verificationMethod ?? null,
 
     // Services
     selectedServices: data?.selectedServices ?? [],
@@ -302,6 +337,35 @@ export const BookingHelpers = {
       commissionPercentage: percentageCommission,
       flatCommission,
     };
+  },
+
+  /** Deduped workspace image URLs (`workspaceImageUrl` + `workspacePhotos`). */
+  getWorkspacePhotoUrls: (booking) => {
+    const urls = [];
+    const push = (u) => {
+      const s = u == null ? '' : String(u).trim();
+      if (s && !urls.includes(s)) urls.push(s);
+    };
+    push(booking?.workspaceImageUrl);
+    if (Array.isArray(booking?.workspacePhotos)) {
+      for (const u of booking.workspacePhotos) push(u);
+    }
+    return urls;
+  },
+
+  /**
+   * none — no photos
+   * pending — photos exist, not approved and no rejection reason
+   * approved — workspaceVerified === true
+   * rejected — workspaceVerified === false and non-empty workspaceRejectionReason
+   */
+  getWorkspaceVerificationState: (booking) => {
+    const photoUrls = BookingHelpers.getWorkspacePhotoUrls(booking);
+    if (photoUrls.length === 0) return 'none';
+    if (booking.workspaceVerified === true) return 'approved';
+    const reason = (booking.workspaceRejectionReason || '').trim();
+    if (booking.workspaceVerified === false && reason) return 'rejected';
+    return 'pending';
   },
 };
 

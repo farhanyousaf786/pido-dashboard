@@ -1,5 +1,14 @@
 import React from 'react';
-import { LayoutDashboard, Users, Gift, Settings, ShieldCheck, Bell, Calendar } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Users,
+  Gift,
+  Settings,
+  ShieldCheck,
+  Bell,
+  Calendar,
+  ClipboardList,
+} from 'lucide-react';
 
 const NAV_ITEMS = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -7,6 +16,7 @@ const NAV_ITEMS = [
   { key: 'notifications', label: 'Notifications', icon: Bell },
   { key: 'bookings', label: 'Bookings', icon: Calendar },
   { key: 'users', label: 'Users', icon: Users },
+  { key: 'forms', label: 'Forms', icon: ClipboardList },
   { key: 'referral', label: 'Referral', icon: Gift },
   { key: 'adminSettings', label: 'Admin Settings', icon: Settings },
 ];

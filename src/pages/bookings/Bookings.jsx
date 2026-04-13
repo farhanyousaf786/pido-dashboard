@@ -74,7 +74,7 @@ function maskUid(uid) {
   return s.slice(-6);
 }
 
-export default function Bookings({ onBookingClick }) {
+export default function Bookings({ onBookingClick, initialFilters = null }) {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -143,6 +143,14 @@ export default function Bookings({ onBookingClick }) {
   }, []);
 
   useEffect(() => {
+    if (!initialFilters || typeof initialFilters !== 'object') return;
+    setFilters((prev) => ({
+      ...prev,
+      ...initialFilters,
+    }));
+  }, [initialFilters]);
+
+  useEffect(() => {
     setVisibleCount(BOOKINGS_PER_PAGE);
   }, [searchQuery, filters]);
 
@@ -150,7 +158,14 @@ export default function Bookings({ onBookingClick }) {
     let result = [...bookings];
 
     if (filters.status && filters.status !== 'all') {
-      result = result.filter((b) => String(b.status || '').toLowerCase() === filters.status);
+      if (filters.status === 'pending_accepted') {
+        result = result.filter((b) => {
+          const s = String(b.status || '').toLowerCase();
+          return s === 'pending' || s === 'accepted';
+        });
+      } else {
+        result = result.filter((b) => String(b.status || '').toLowerCase() === filters.status);
+      }
     }
 
     if (dateRange?.start || dateRange?.end) {
@@ -271,6 +286,7 @@ export default function Bookings({ onBookingClick }) {
               <option value="all">All</option>
               <option value="pending">Pending</option>
               <option value="accepted">Accepted</option>
+              <option value="pending_accepted">Pending + accepted (in progress)</option>
               <option value="active">Active</option>
               <option value="completed">Completed</option>
               <option value="cancelled">Cancelled</option>

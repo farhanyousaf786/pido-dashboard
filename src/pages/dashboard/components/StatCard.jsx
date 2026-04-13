@@ -10,7 +10,10 @@ export default function StatCard({ title, value, subtitle, icon: Icon, color, tr
       onKeyDown={
         onClick
           ? (e) => {
-              if (e.key === 'Enter' || e.key === ' ') onClick();
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onClick(e);
+              }
             }
           : undefined
       }

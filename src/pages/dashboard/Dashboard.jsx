@@ -30,7 +30,7 @@ import ErrorState from './components/ErrorState.jsx';
 import InfoBox from './components/InfoBox.jsx';
 import { useAuth } from '../../core/auth/AuthContext';
 
-export default function Dashboard({ onNavigateToUsers }) {
+export default function Dashboard({ onNavigateToUsers, onNavigateToBookings }) {
   const { adminTestMode } = useAuth();
   const excludeTestUsers = !adminTestMode;
   const [userStats, setUserStats] = useState(null);
@@ -100,6 +100,29 @@ export default function Dashboard({ onNavigateToUsers }) {
       return 'Custom Range';
     }
     return 'All';
+  };
+
+  /** Match Bookings page filter shape; status `pending_accepted` aligns with dashboard “Active” (pending · accepted). */
+  const buildBookingsNavFilters = (segment) => {
+    const date = {
+      dateFilter,
+      customStart,
+      customEnd,
+    };
+    switch (segment) {
+      case 'total':
+        return { ...date, status: 'all' };
+      case 'active':
+        return { ...date, status: 'pending_accepted' };
+      case 'completed':
+        return { ...date, status: 'completed' };
+      case 'cancelled':
+        return { ...date, status: 'cancelled' };
+      case 'revenue':
+        return { ...date, status: 'all' };
+      default:
+        return { ...date, status: 'all' };
+    }
   };
 
   useEffect(() => {
@@ -303,6 +326,7 @@ export default function Dashboard({ onNavigateToUsers }) {
                 subtitle={dateFilter === 'all' ? 'All time bookings' : 'Filtered bookings'}
                 icon={Calendar}
                 color="blue"
+                onClick={() => onNavigateToBookings?.(buildBookingsNavFilters('total'))}
               />
               <StatCard
                 title="Active Bookings"
@@ -310,6 +334,7 @@ export default function Dashboard({ onNavigateToUsers }) {
                 subtitle={`${bookingStats?.pendingBookings || 0} pending · ${(bookingStats?.activeBookings || 0) - (bookingStats?.pendingBookings || 0)} accepted`}
                 icon={Clock}
                 color="orange"
+                onClick={() => onNavigateToBookings?.(buildBookingsNavFilters('active'))}
               />
               <StatCard
                 title="Completed"
@@ -317,6 +342,7 @@ export default function Dashboard({ onNavigateToUsers }) {
                 subtitle="Successfully finished"
                 icon={CheckCircle}
                 color="green"
+                onClick={() => onNavigateToBookings?.(buildBookingsNavFilters('completed'))}
               />
               <StatCard
                 title="Cancelled"
@@ -324,6 +350,7 @@ export default function Dashboard({ onNavigateToUsers }) {
                 subtitle="Cancelled bookings"
                 icon={XCircle}
                 color="red"
+                onClick={() => onNavigateToBookings?.(buildBookingsNavFilters('cancelled'))}
               />
               <StatCard
                 title="App Revenue"
@@ -331,6 +358,7 @@ export default function Dashboard({ onNavigateToUsers }) {
                 subtitle="Pido app commission (15%)"
                 icon={Wallet}
                 color="orange"
+                onClick={() => onNavigateToBookings?.(buildBookingsNavFilters('revenue'))}
               />
               <StatCard
                 title="Total Revenue"
@@ -338,6 +366,7 @@ export default function Dashboard({ onNavigateToUsers }) {
                 subtitle="Overall booking amounts"
                 icon={DollarSign}
                 color="green"
+                onClick={() => onNavigateToBookings?.(buildBookingsNavFilters('revenue'))}
               />
               <StatCard
                 title="Provider Payout"
@@ -345,6 +374,7 @@ export default function Dashboard({ onNavigateToUsers }) {
                 subtitle="Paid to service providers"
                 icon={HandCoins}
                 color="blue"
+                onClick={() => onNavigateToBookings?.(buildBookingsNavFilters('revenue'))}
               />
             </>
           )}

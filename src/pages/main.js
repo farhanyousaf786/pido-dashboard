@@ -10,6 +10,7 @@ import BookingDetailPage from './bookings/BookingDetail.jsx';
 import VerificationsPage from './verifications/Verifications';
 import NotificationsPage from './notifications/Notifications';
 import ReferralPage from './referral/Referral';
+import LandingFormsPage from './forms/LandingForms.jsx';
 import SettingsPage from './settings/Settings';
 import AdminSettingsPage from './settings/AdminSettings';
 import { useAuth } from '../core/auth/AuthContext';
@@ -24,6 +25,7 @@ const PAGES = {
   verifications: 'verifications',
   notifications: 'notifications',
   referral: 'referral',
+  forms: 'forms',
   settings: 'settings',
   adminSettings: 'adminSettings',
 };
@@ -35,6 +37,7 @@ function Main() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [usersInitialFilters, setUsersInitialFilters] = useState(null);
+  const [bookingsInitialFilters, setBookingsInitialFilters] = useState(null);
 
   const handleNavigate = (pageKey, user = null) => {
     if (pageKey === PAGES.userDetail && user) {
@@ -46,6 +49,9 @@ function Main() {
     if (pageKey === PAGES.users) {
       setUsersInitialFilters(null);
     }
+    if (pageKey === PAGES.bookings) {
+      setBookingsInitialFilters(null);
+    }
     setActivePage(pageKey);
     setSidebarOpen(false);
   };
@@ -53,6 +59,12 @@ function Main() {
   const handleNavigateToUsersWithFilters = (filters) => {
     setUsersInitialFilters(filters || {});
     setActivePage(PAGES.users);
+    setSidebarOpen(false);
+  };
+
+  const handleNavigateToBookingsWithFilters = (filters) => {
+    setBookingsInitialFilters(filters || {});
+    setActivePage(PAGES.bookings);
     setSidebarOpen(false);
   };
 
@@ -77,6 +89,7 @@ function Main() {
         return (
           <BookingsPage
             onBookingClick={(booking) => handleNavigate(PAGES.bookingDetail, booking)}
+            initialFilters={bookingsInitialFilters}
           />
         );
       case PAGES.bookingDetail:
@@ -96,13 +109,20 @@ function Main() {
             onOpenBooking={(booking) => handleNavigate(PAGES.bookingDetail, booking)}
           />
         );
+      case PAGES.forms:
+        return <LandingFormsPage />;
       case PAGES.settings:
         return <SettingsPage />;
       case PAGES.adminSettings:
         return <AdminSettingsPage />;
       case PAGES.dashboard:
       default:
-        return <DashboardPage onNavigateToUsers={handleNavigateToUsersWithFilters} />;
+        return (
+          <DashboardPage
+            onNavigateToUsers={handleNavigateToUsersWithFilters}
+            onNavigateToBookings={handleNavigateToBookingsWithFilters}
+          />
+        );
     }
   };
 

@@ -11,6 +11,10 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  updatePassword,
+  sendPasswordResetEmail,
 } from 'firebase/auth';
 import {
   collection,
@@ -30,6 +34,23 @@ import {
 } from '../adminTestModeStorage.js';
 
 const AuthContext = createContext(null);
+
+function mapAuthPasswordError(e) {
+  const code = e?.code || '';
+  if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+    return 'Current password is incorrect.';
+  }
+  if (code === 'auth/weak-password') {
+    return 'Password is too weak. Use at least 6 characters.';
+  }
+  if (code === 'auth/too-many-requests') {
+    return 'Too many attempts. Try again later.';
+  }
+  if (code === 'auth/requires-recent-login') {
+    return 'For security, sign out and sign in again, then change your password.';
+  }
+  return e?.message || 'Something went wrong.';
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -138,6 +159,35 @@ export function AuthProvider({ children }) {
     await signOut(auth);
   };
 
+  const changeAdminPassword = useCallback(async (currentPassword, newPassword) => {
+    const u = auth.currentUser;
+    if (!u?.email) {
+      return { success: false, error: 'Not signed in.' };
+    }
+    try {
+      const cred = EmailAuthProvider.credential(u.email, currentPassword);
+      await reauthenticateWithCredential(u, cred);
+      await updatePassword(u, newPassword);
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: mapAuthPasswordError(e) };
+    }
+  }, []);
+
+  const sendAdminPasswordResetEmail = useCallback(async () => {
+    const u = auth.currentUser;
+    const em = u?.email;
+    if (!em) {
+      return { success: false, error: 'No email on file.' };
+    }
+    try {
+      await sendPasswordResetEmail(auth, em);
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: mapAuthPasswordError(e) };
+    }
+  }, []);
+
   const updateAdminName = useCallback(async (name) => {
     const trimmed = (name ?? '').toString().trim();
     setError('');
@@ -173,8 +223,20 @@ export function AuthProvider({ children }) {
       logout,
       setError,
       updateAdminName,
+      changeAdminPassword,
+      sendAdminPasswordResetEmail,
     }),
-    [user, adminProfile, adminTestMode, loading, error, updateAdminName, setAdminTestMode],
+    [
+      user,
+      adminProfile,
+      adminTestMode,
+      loading,
+      error,
+      updateAdminName,
+      changeAdminPassword,
+      sendAdminPasswordResetEmail,
+      setAdminTestMode,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

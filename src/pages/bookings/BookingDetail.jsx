@@ -24,6 +24,7 @@ import {
 import { bookingService } from '../../core/services/bookingService.js';
 import { db } from '../../core/firebase/firebaseConfig.js';
 import { notificationService } from '../../core/services/notificationService.js';
+import BookingWorkspaceVerification from './components/BookingWorkspaceVerification.jsx';
 
 function toDate(ts) {
   if (!ts) return null;
@@ -239,10 +240,6 @@ export default function BookingDetail({ bookingId, onBack }) {
 
     remainingDistance: '',
     distance: '',
-
-    workspaceVerified: false,
-    workspaceVerifiedBy: '',
-    workspaceRejectionReason: '',
   });
 
   const [initialForm, setInitialForm] = useState(null);
@@ -312,10 +309,6 @@ export default function BookingDetail({ bookingId, onBack }) {
 
       remainingDistance: booking.remainingDistance ?? '',
       distance: booking.distance ?? '',
-
-      workspaceVerified: booking.workspaceVerified === true,
-      workspaceVerifiedBy: booking.workspaceVerifiedBy || '',
-      workspaceRejectionReason: booking.workspaceRejectionReason || '',
     };
 
     setForm(next);
@@ -381,10 +374,6 @@ export default function BookingDetail({ bookingId, onBack }) {
 
       remainingDistance: parseNumberOrNull(form.remainingDistance),
       distance: parseNumberOrNull(form.distance),
-
-      workspaceVerified: form.workspaceVerified === true,
-      workspaceVerifiedBy: cleanString(form.workspaceVerifiedBy),
-      workspaceRejectionReason: cleanString(form.workspaceRejectionReason),
     };
 
     const bookingDate = parseTimestampOrNull(form.bookingDate);
@@ -436,10 +425,6 @@ export default function BookingDetail({ bookingId, onBack }) {
 
       remainingDistance: parseNumberOrNull(tmp.remainingDistance),
       distance: parseNumberOrNull(tmp.distance),
-
-      workspaceVerified: tmp.workspaceVerified === true,
-      workspaceVerifiedBy: cleanString(tmp.workspaceVerifiedBy),
-      workspaceRejectionReason: cleanString(tmp.workspaceRejectionReason),
     };
 
     const bookingDate = parseTimestampOrNull(tmp.bookingDate);
@@ -667,10 +652,6 @@ export default function BookingDetail({ bookingId, onBack }) {
 
       remainingDistance: booking.remainingDistance ?? '',
       distance: booking.distance ?? '',
-
-      workspaceVerified: booking.workspaceVerified === true,
-      workspaceVerifiedBy: booking.workspaceVerifiedBy || '',
-      workspaceRejectionReason: booking.workspaceRejectionReason || '',
     });
     setEditMode(false);
     setShowAdvanced(false);
@@ -1148,6 +1129,8 @@ export default function BookingDetail({ bookingId, onBack }) {
             </div>
           </div>
 
+          <BookingWorkspaceVerification booking={booking} />
+
           <div className="detail-section booking-advanced">
             <h3 className="section-title">
               <Shield size={16} /> Advanced
@@ -1197,21 +1180,6 @@ export default function BookingDetail({ bookingId, onBack }) {
                 <div className="detail-item">
                   <span className="detail-label">Distance</span>
                   <input type="number" className="booking-input" name="distance" value={form.distance} onChange={handleChange} />
-                </div>
-
-                <div className="detail-item booking-checkbox">
-                  <label className="booking-check">
-                    <input type="checkbox" name="workspaceVerified" checked={form.workspaceVerified} onChange={handleChange} />
-                    Workspace Verified
-                  </label>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Verified By</span>
-                  <input className="booking-input" name="workspaceVerifiedBy" value={form.workspaceVerifiedBy} onChange={handleChange} />
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Rejection Reason</span>
-                  <input className="booking-input" name="workspaceRejectionReason" value={form.workspaceRejectionReason} onChange={handleChange} />
                 </div>
               </div>
             )}

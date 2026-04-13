@@ -1,6 +1,10 @@
 node_modules
+dist
+.DS_Store
+**/.DS_Store
 .env
 .env.local
+.firebase
 
 # Firebase Admin SDK keys (never commit)
 server/serviceAccount.json

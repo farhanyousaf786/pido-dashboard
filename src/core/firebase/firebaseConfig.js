@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getFunctions } from 'firebase/functions';
 
 // Firebase config is loaded from Vite environment variables
 // Make sure these are defined in your .env.local (not committed to git)
@@ -18,3 +19,6 @@ const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+const functionsRegion = import.meta.env.VITE_FIREBASE_FUNCTIONS_REGION || undefined;
+export const functions = functionsRegion ? getFunctions(app, functionsRegion) : getFunctions(app);
