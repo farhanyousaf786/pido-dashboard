@@ -21,13 +21,15 @@ Server defaults to `http://localhost:3000`.
 
 ## Frontend config
 
-Set in dashboard root `.env.local`:
+**Local:** in dashboard root `.env.local`:
 
 ```bash
 VITE_API_BASE_URL=http://localhost:3000
 ```
 
-Then restart the dashboard dev server.
+Restart the Vite dev server after changes.
+
+**Production:** set `VITE_API_BASE_URL` to this API’s **public HTTPS URL** when running `npm run build` for the dashboard (see root `README.md` → Production). Set `FRONTEND_ORIGIN=https://pido-app.web.app` on this server (no trailing slash) so CORS allows the live dashboard.
 
 ## Routes
 

@@ -67,6 +67,7 @@ export default function UserFilters({
             className="filter-select"
           >
             <option value="">All Account Status</option>
+            <option value="unverified">Unverified</option>
             <option value="approved">Approved</option>
             <option value="pending_approval">Pending Approval</option>
             <option value="rejected">Rejected</option>
@@ -122,7 +123,12 @@ export default function UserFilters({
           )}
           {filters.accountStatus && (
             <span className="filter-tag">
-              Account: {filters.accountStatus}
+              Account:{' '}
+              {filters.accountStatus === 'unverified'
+                ? 'Unverified'
+                : filters.accountStatus === 'pending_approval'
+                  ? 'Pending approval'
+                  : filters.accountStatus}
             </span>
           )}
           {filters.isTestUser === true && <span className="filter-tag">Test users only</span>}

@@ -1,8 +1,36 @@
 {
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "dashboard",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log"
+      ]
+    }
+  ],
   "hosting": {
     "public": "dist",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
+      {
+        "source": "/health",
+        "function": {
+          "functionId": "notificationsApi",
+          "region": "us-central1",
+          "codebase": "dashboard"
+        }
+      },
+      {
+        "source": "/admin/notifications/**",
+        "function": {
+          "functionId": "notificationsApi",
+          "region": "us-central1",
+          "codebase": "dashboard"
+        }
+      },
       {
         "source": "**",
         "destination": "/index.html"

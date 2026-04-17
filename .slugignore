@@ -1,0 +1,8 @@
+# API dyno only runs `server/`; shrink slug after build
+/src
+/public
+index.html
+vite.config.js
+firebase.json
+.firebaserc
+functions

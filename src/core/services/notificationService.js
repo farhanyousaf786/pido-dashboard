@@ -1,9 +1,32 @@
 import { API_BASE_URL, API_ENDPOINTS, getAuthHeaders } from '../../config/api.js';
 
+function isLocalhostUrl(url) {
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/i.test(String(url || '').trim());
+}
+
+function isBrowserOnLiveHost() {
+  if (typeof window === 'undefined') return false;
+  const h = window.location.hostname || '';
+  return h !== '' && h !== 'localhost' && h !== '127.0.0.1';
+}
+
+function liveApiHelpMessage() {
+  return (
+    'Production dashboards cannot call localhost. Deploy the folder `server/` to a public HTTPS host (Cloud Run, Render, Railway, etc.), ' +
+    'set that URL as VITE_API_BASE_URL when you run npm run build, and set FRONTEND_ORIGIN on the server to this site’s URL. See README “Production (notifications)”.'
+  );
+}
+
 async function apiRequest(url, options = {}) {
   if (!API_BASE_URL) {
     throw new Error(
-      'Missing VITE_API_BASE_URL. Set it in .env.local to your Node backend base URL (e.g. http://localhost:3000) and restart the dev server.'
+      'Missing VITE_API_BASE_URL. For local dev set it in .env.local (e.g. http://localhost:3000) and restart Vite. For production, set it when building (see README).'
+    );
+  }
+
+  if (isLocalhostUrl(API_BASE_URL) && isBrowserOnLiveHost()) {
+    throw new Error(
+      `This app was built with VITE_API_BASE_URL=${API_BASE_URL}, which does not work on the live site. Rebuild with your deployed API URL. ${liveApiHelpMessage()}`
     );
   }
 
@@ -24,9 +47,10 @@ async function apiRequest(url, options = {}) {
       err?.name === 'TypeError' ||
       /Failed to fetch|NetworkError|load failed/i.test(String(err?.message || ''));
     if (isNetwork) {
-      throw new Error(
-        `Cannot reach API at ${API_BASE_URL}. Start the notification server (e.g. cd server && npm install && npm run dev) and ensure VITE_API_BASE_URL matches its PORT in .env.local, then restart Vite.`
-      );
+      const hint = isBrowserOnLiveHost()
+        ? ` Check that the API is deployed, HTTPS, and allows CORS from ${window.location.origin}. ${liveApiHelpMessage()}`
+        : ' Start the notification server (cd server && npm install && npm run dev), match PORT in .env.local as VITE_API_BASE_URL, and restart Vite.';
+      throw new Error(`Cannot reach API at ${API_BASE_URL}.${hint}`);
     }
     throw err;
   }

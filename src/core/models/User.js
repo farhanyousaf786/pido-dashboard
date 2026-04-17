@@ -156,8 +156,17 @@ function shortUidForLabel(uid) {
 
 // User helpers
 export const UserHelpers = {
-  isCustomer: (user) => user.userType === 'customer',
+  isCustomer: (user) => {
+    const t = (user?.userType || '').toString().toLowerCase();
+    return t === 'customer';
+  },
   isServiceProvider: (user) => user.userType === 'serviceProvider',
+  /** Account status shown in UI: customers always display as approved (no other condition). */
+  accountStatusForDisplay: (user) => {
+    if (!user) return null;
+    if (UserHelpers.isCustomer(user)) return 'approved';
+    return user.accountStatus ?? null;
+  },
   isOnline: (user) => user.isOnline === true,
   isProfileComplete: (user) => user.isProfileComplete === true,
   isVerified: (user) => user.verify === true,

@@ -8,9 +8,9 @@ export default function UserRow({ user, onClick }) {
   const isCustomer = UserHelpers.isCustomer(user);
   const nameLabel = UserHelpers.personName(user) || 'Unknown User';
 
-  // Account status badge
+  // Account status badge (customers always show Approved in the list)
   const getStatusBadge = () => {
-    switch (user.accountStatus) {
+    switch (UserHelpers.accountStatusForDisplay(user)) {
       case 'approved':
         return <span className="status-badge approved"><CheckCircle size={12} /> Approved</span>;
       case 'pending_approval':

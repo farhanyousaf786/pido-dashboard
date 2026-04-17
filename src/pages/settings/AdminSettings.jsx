@@ -1,6 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { User, Mail, Shield, LogOut, Save, FlaskConical, KeyRound, Send, Hash } from 'lucide-react';
+import {
+  User,
+  Mail,
+  Shield,
+  LogOut,
+  Save,
+  FlaskConical,
+  KeyRound,
+  Send,
+  Hash,
+  Sun,
+  Moon,
+} from 'lucide-react';
 import { useAuth } from '../../core/auth/AuthContext';
+import { getStoredTheme, setTheme as persistTheme } from '../../core/theme/theme.js';
 
 function AdminSettings() {
   const {
@@ -26,6 +39,8 @@ function AdminSettings() {
   const [resetSending, setResetSending] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState(null);
   const [passwordError, setPasswordError] = useState(null);
+
+  const [appearanceDark, setAppearanceDark] = useState(() => getStoredTheme() === 'dark');
 
   const hasEmailPasswordProvider = useMemo(
     () => user?.providerData?.some((p) => p.providerId === 'password') ?? false,
@@ -109,6 +124,43 @@ function AdminSettings() {
       )}
 
       <div className="admin-settings__grid">
+        <div className="admin-settings__card admin-settings__card--appearance">
+          <h2 className="admin-settings__card-title">
+            <Sun size={18} className="admin-settings__appearance-sun" />
+            Appearance
+          </h2>
+          <div className="admin-settings__test-mode-row">
+            <div className="admin-settings__test-mode-text">
+              <div className="admin-settings__test-mode-title">
+                <Moon size={18} className="admin-settings__test-mode-icon" aria-hidden />
+                <span>Theme</span>
+                <span
+                  className={`admin-settings__test-pill ${appearanceDark ? 'admin-settings__test-pill--on' : ''}`}
+                >
+                  {appearanceDark ? 'Dark' : 'Light'}
+                </span>
+              </div>
+              <p className="admin-settings__test-mode-desc">
+                Dark mode uses muted backgrounds and light text. Preference is saved in this browser only.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={appearanceDark}
+              aria-label={appearanceDark ? 'Switch to light mode' : 'Switch to dark mode'}
+              className={`admin-settings__switch ${appearanceDark ? 'admin-settings__switch--on' : ''}`}
+              onClick={() => {
+                const nextDark = !appearanceDark;
+                setAppearanceDark(nextDark);
+                persistTheme(nextDark ? 'dark' : 'light');
+              }}
+            >
+              <span className="admin-settings__switch-knob" />
+            </button>
+          </div>
+        </div>
+
         <div className="admin-settings__card admin-settings__card--profile">
           <h2 className="admin-settings__card-title">
             <User size={18} />

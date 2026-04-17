@@ -85,7 +85,7 @@ export default function UserDetail({ user, onBack, onUserPatch }) {
   };
 
   const getStatusBadge = () => {
-    switch (user?.accountStatus) {
+    switch (UserHelpers.accountStatusForDisplay(user)) {
       case 'approved':
         return <span className="detail-status-badge approved"><CheckCircle size={14} /> Approved</span>;
       case 'pending_approval':

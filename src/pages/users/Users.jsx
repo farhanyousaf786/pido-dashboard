@@ -166,8 +166,13 @@ export default function Users({ onUserClick, initialFilters = null }) {
     if (filters.isOnline !== undefined) {
       result = result.filter(u => u.isOnline === filters.isOnline);
     }
-    if (filters.accountStatus) {
-      result = result.filter(u => u.accountStatus === filters.accountStatus);
+    if (filters.accountStatus === 'unverified') {
+      result = result.filter((u) => {
+        const s = u.accountStatus;
+        return s !== 'approved' && s !== 'pending_approval' && s !== 'rejected';
+      });
+    } else if (filters.accountStatus) {
+      result = result.filter((u) => u.accountStatus === filters.accountStatus);
     }
 
     // Apply search

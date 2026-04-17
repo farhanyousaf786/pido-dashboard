@@ -369,7 +369,7 @@ export async function getUsersList(options = {}) {
     if (isOnline !== undefined) {
       q = query(q, where('isOnline', '==', isOnline));
     }
-    if (accountStatus) {
+    if (accountStatus && accountStatus !== 'unverified') {
       q = query(q, where('accountStatus', '==', accountStatus));
     }
     

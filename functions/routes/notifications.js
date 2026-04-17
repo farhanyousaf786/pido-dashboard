@@ -1,7 +1,7 @@
-import express from 'express';
-import { getAdminApp } from '../firebaseAdmin.js';
+const express = require('express');
+const { getAdminApp } = require('../firebaseAdmin');
 
-export const notificationsRouter = express.Router();
+const notificationsRouter = express.Router();
 
 function normalizeData(data) {
   if (!data || typeof data !== 'object') return undefined;
@@ -13,6 +13,7 @@ function normalizeData(data) {
   return Object.keys(out).length ? out : undefined;
 }
 
+/** Deep-clone JSON-serializable payload for Firestore (keeps numbers/bools/maps). */
 function cloneDataForFirestore(data) {
   if (!data || typeof data !== 'object') return {};
   try {
@@ -42,6 +43,10 @@ async function resolveUserRecipients(admin, userIds) {
   return out;
 }
 
+/**
+ * Writes the same in-app record the mobile app expects: top-level `notifications`
+ * and mirror `users/{uid}/notifications` (same doc id).
+ */
 async function persistDirectMessageRecord(admin, { uid, title, body, requestData, userDoc }) {
   const db = admin.firestore();
   const dataMap = cloneDataForFirestore(requestData);
@@ -222,7 +227,7 @@ notificationsRouter.post('/users', async (req, res) => {
             });
             firestoreIds.push(fid);
           } catch {
-            // Push succeeded; in-app history write failed
+            // Push succeeded; in-app history write failed — still count as sent
           }
         }
       } catch {
@@ -263,7 +268,6 @@ notificationsRouter.post('/test', async (req, res) => {
       return res.json({ success: true, message: 'Test notification sent', result: { messageId } });
     }
 
-    // token test
     if (!target) {
       return res.status(400).json({ success: false, message: 'target is required for token test' });
     }
@@ -283,3 +287,5 @@ notificationsRouter.post('/test', async (req, res) => {
     });
   }
 });
+
+module.exports = { notificationsRouter };
