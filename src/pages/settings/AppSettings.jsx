@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Save, Settings as SettingsIcon, AlertCircle } from 'lucide-react';
+import { Save, AlertCircle, Settings } from 'lucide-react';
 import { getAppSettings, saveAppSettings } from '../../core/services/appSettingsService.js';
 
-function Settings() {
+export default function AppSettings() {
   const [values, setValues] = useState({
     autoCancelTimeInMin: '',
     distanceInMiles: '',
@@ -69,7 +69,7 @@ function Settings() {
       <div className="admin-settings__grid">
         <div className="admin-settings__card admin-settings__card--profile">
           <h2 className="admin-settings__card-title">
-            <SettingsIcon size={18} />
+            <Settings size={18} />
             Core
           </h2>
 
@@ -130,9 +130,7 @@ function Settings() {
         </div>
       </div>
 
-      
+   
     </section>
   );
 }
-
-export default Settings;

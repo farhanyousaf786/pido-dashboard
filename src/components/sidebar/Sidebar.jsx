@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { key: 'bookings', label: 'Bookings', icon: Calendar },
   { key: 'users', label: 'Users', icon: Users },
   { key: 'forms', label: 'Forms', icon: ClipboardList },
+  { key: 'appSettings', label: 'App Settings', icon: Settings },
   { key: 'referral', label: 'Referral', icon: Gift },
   { key: 'adminSettings', label: 'Admin Settings', icon: Settings },
 ];
@@ -28,7 +29,7 @@ function Sidebar({ activePage, onNavigate, isOpen }) {
     <aside className={sidebarClass}>
       <nav className="app-sidebar__nav">
         {NAV_ITEMS.map((item) => {
-          const isActive = activePage === item.key;
+          const isActive = activePage === item.key || (item.key === 'appSettings' && activePage === 'settings');
           const className = isActive
             ? 'app-sidebar__item app-sidebar__item--active'
             : 'app-sidebar__item';
@@ -39,7 +40,7 @@ function Sidebar({ activePage, onNavigate, isOpen }) {
               key={item.key}
               type="button"
               className={className}
-              onClick={() => onNavigate(item.key)}
+              onClick={() => onNavigate(item.key === 'appSettings' ? 'settings' : item.key)}
             >
               <Icon size={18} className="app-sidebar__icon" />
               <span className="app-sidebar__label">{item.label}</span>
