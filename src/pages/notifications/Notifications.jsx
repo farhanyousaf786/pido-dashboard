@@ -301,7 +301,7 @@ export default function Notifications() {
                       placeholder="Search by name, email, or phone..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="search-input"
+                      className="notifications-search-input"
                     />
                   </div>
 

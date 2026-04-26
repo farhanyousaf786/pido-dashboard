@@ -4740,13 +4740,28 @@ body {
   font-size: 1rem;
   font-weight: 600;
   color: var(--color-dim-black);
-  background: white;
+  background: var(--color-white);
   -webkit-appearance: menulist;
   appearance: menulist;
 }
 
 .status-select:disabled {
   opacity: 0.7;
+}
+
+.status-select option {
+  color: var(--color-dim-black);
+  background: var(--color-white);
+}
+
+:root[data-theme="dark"] .status-select {
+  color: var(--color-dim-black);
+  background: var(--color-white);
+}
+
+:root[data-theme="dark"] .status-select:disabled {
+  color: var(--color-dark-grey);
+  -webkit-text-fill-color: var(--color-dark-grey);
 }
 
 .update-status-btn {
