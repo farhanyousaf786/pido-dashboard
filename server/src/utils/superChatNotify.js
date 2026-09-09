@@ -42,8 +42,12 @@ export async function sendSuperChatPush(admin, { userId, chatId, title, body }) 
       notification: { title: pushTitle, body: pushBody },
       data: {
         type: 'super_chat',
+        action: 'super_chat',
         chatId: cid,
         userId: uid,
+        title: pushTitle,
+        body: pushBody,
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
         timestamp: new Date().toISOString(),
       },
       android: {
