@@ -17,6 +17,8 @@ import {
   Clock,
   Plus,
   Trash2,
+  FileText,
+  Save,
 } from 'lucide-react';
 import { collection, limit, onSnapshot, query } from 'firebase/firestore';
 import { db } from '../../core/firebase/firebaseConfig.js';
@@ -223,6 +225,14 @@ export default function BulkMessaging() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyDeletingId, setHistoryDeletingId] = useState('');
 
+  const [welcomeType, setWelcomeType] = useState('customer');
+  const [welcomeTemplates, setWelcomeTemplates] = useState(null);
+  const [welcomeLoading, setWelcomeLoading] = useState(false);
+  const [welcomeSaving, setWelcomeSaving] = useState(false);
+  const [welcomeSaveMsg, setWelcomeSaveMsg] = useState('');
+  const [welcomeHistory, setWelcomeHistory] = useState([]);
+  const [welcomeHistoryLoading, setWelcomeHistoryLoading] = useState(false);
+
   const loadHistory = async () => {
     setHistoryLoading(true);
     try {
@@ -232,6 +242,59 @@ export default function BulkMessaging() {
       // History is optional — don't block the page
     } finally {
       setHistoryLoading(false);
+    }
+  };
+
+  const loadWelcomeTemplate = async () => {
+    setWelcomeLoading(true);
+    setWelcomeSaveMsg('');
+    try {
+      const res = await emailService.getWelcomeTemplate();
+      setWelcomeTemplates(res?.data?.templates || null);
+    } catch (e) {
+      setWelcomeSaveMsg(e.message || 'Failed to load welcome template');
+    } finally {
+      setWelcomeLoading(false);
+    }
+  };
+
+  const loadWelcomeHistory = async () => {
+    setWelcomeHistoryLoading(true);
+    try {
+      const res = await emailService.getWelcomeHistory(40);
+      setWelcomeHistory(res?.data?.sends || []);
+    } catch {
+      // optional
+    } finally {
+      setWelcomeHistoryLoading(false);
+    }
+  };
+
+  const updateWelcomeField = (field, value) => {
+    setWelcomeTemplates((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        [welcomeType]: {
+          ...prev[welcomeType],
+          [field]: value,
+        },
+      };
+    });
+  };
+
+  const saveWelcomeTemplate = async () => {
+    if (!welcomeTemplates) return;
+    setWelcomeSaving(true);
+    setWelcomeSaveMsg('');
+    try {
+      const res = await emailService.saveWelcomeTemplate(welcomeTemplates);
+      setWelcomeTemplates(res?.data?.templates || welcomeTemplates);
+      setWelcomeSaveMsg('Template saved. New signups will use this copy.');
+    } catch (e) {
+      setWelcomeSaveMsg(e.message || 'Failed to save template');
+    } finally {
+      setWelcomeSaving(false);
     }
   };
 
@@ -279,6 +342,12 @@ export default function BulkMessaging() {
       cancelled = true;
     };
   }, [user]);
+
+  useEffect(() => {
+    if (channel !== 'welcome') return;
+    loadWelcomeTemplate();
+    loadWelcomeHistory();
+  }, [channel]);
 
   useEffect(() => {
     setUsersLoading(true);
@@ -580,6 +649,14 @@ export default function BulkMessaging() {
           <Mail size={16} />
           Email
         </button>
+        <button
+          type="button"
+          className={`tab-btn ${channel === 'welcome' ? 'active' : ''}`}
+          onClick={() => setChannel('welcome')}
+        >
+          <FileText size={16} />
+          Welcome email
+        </button>
         <button type="button" className="tab-btn" disabled title="Coming soon">
           <MessageSquare size={16} />
           SMS (soon)
@@ -594,7 +671,151 @@ export default function BulkMessaging() {
         </div>
       )}
 
-      {channel === 'sms' ? (
+      {channel === 'welcome' ? (
+        <div className="bulk-welcome">
+          <div className="bulk-banner bulk-banner--info">
+            <CheckCircle size={18} />
+            <div>
+              Welcome emails send automatically when a user finishes signup (customer after personal
+              info; provider after profile complete). Edit the template below — use{' '}
+              <code>{'{{name}}'}</code> for the recipient name.
+            </div>
+          </div>
+
+          <div className="bulk-main">
+            <section className="bulk-panel">
+              <div className="bulk-panel__head">
+                <FileText size={18} />
+                <h2>Template</h2>
+              </div>
+
+              <div className="bulk-welcome__type-toggle" role="group" aria-label="Welcome template type">
+                <button
+                  type="button"
+                  className={`bulk-mode-btn ${welcomeType === 'customer' ? 'active' : ''}`}
+                  onClick={() => setWelcomeType('customer')}
+                >
+                  Customer
+                </button>
+                <button
+                  type="button"
+                  className={`bulk-mode-btn ${welcomeType === 'serviceProvider' ? 'active' : ''}`}
+                  onClick={() => setWelcomeType('serviceProvider')}
+                >
+                  Provider
+                </button>
+              </div>
+
+              {welcomeLoading || !welcomeTemplates ? (
+                <p className="bulk-muted">
+                  {welcomeLoading ? 'Loading template…' : 'No template loaded'}
+                </p>
+              ) : (
+                <>
+                  <div className="bulk-field">
+                    <label htmlFor="welcome-subject">Subject</label>
+                    <input
+                      id="welcome-subject"
+                      type="text"
+                      value={welcomeTemplates[welcomeType]?.subject || ''}
+                      onChange={(e) => updateWelcomeField('subject', e.target.value)}
+                    />
+                  </div>
+                  <div className="bulk-field">
+                    <label htmlFor="welcome-title">Email title</label>
+                    <input
+                      id="welcome-title"
+                      type="text"
+                      value={welcomeTemplates[welcomeType]?.title || ''}
+                      onChange={(e) => updateWelcomeField('title', e.target.value)}
+                    />
+                  </div>
+                  <div className="bulk-field">
+                    <label htmlFor="welcome-body">Body</label>
+                    <textarea
+                      id="welcome-body"
+                      rows={14}
+                      value={welcomeTemplates[welcomeType]?.body || ''}
+                      onChange={(e) => updateWelcomeField('body', e.target.value)}
+                    />
+                  </div>
+                  <div className="bulk-welcome__actions">
+                    <button
+                      type="button"
+                      className="bulk-btn bulk-btn-primary"
+                      onClick={saveWelcomeTemplate}
+                      disabled={welcomeSaving}
+                    >
+                      {welcomeSaving ? <Loader size={16} className="spinning" /> : <Save size={16} />}
+                      {welcomeSaving ? 'Saving…' : 'Save template'}
+                    </button>
+                    {welcomeSaveMsg ? (
+                      <span className="bulk-muted">{welcomeSaveMsg}</span>
+                    ) : null}
+                  </div>
+                </>
+              )}
+            </section>
+
+            <section className="bulk-panel bulk-history">
+              <div className="bulk-panel__head">
+                <Clock size={18} />
+                <h2>Welcome email record</h2>
+                <button
+                  type="button"
+                  className="bulk-btn bulk-btn-outline bulk-history__refresh"
+                  onClick={loadWelcomeHistory}
+                  disabled={welcomeHistoryLoading}
+                >
+                  {welcomeHistoryLoading ? <Loader size={14} className="spinning" /> : null}
+                  Refresh
+                </button>
+              </div>
+
+              {welcomeHistoryLoading && welcomeHistory.length === 0 ? (
+                <p className="bulk-muted">Loading record…</p>
+              ) : welcomeHistory.length === 0 ? (
+                <p className="bulk-muted">
+                  No welcome emails logged yet. New signup sends will appear here.
+                </p>
+              ) : (
+                <div className="bulk-history-list">
+                  {welcomeHistory.map((row) => (
+                    <article key={row.id} className="bulk-history-item">
+                      <div className="bulk-history-item__main">
+                        <strong>{row.subject || 'Welcome email'}</strong>
+                        <span
+                          className={`bulk-history-status ${
+                            row.status === 'failed'
+                              ? 'bulk-history-status--warn'
+                              : 'bulk-history-status--ok'
+                          }`}
+                        >
+                          {row.status === 'failed' ? 'Failed' : 'Sent'}
+                        </span>
+                      </div>
+                      <p className="bulk-history-item__preview">
+                        {row.recipientName || 'User'} · {row.email || 'no email'}
+                      </p>
+                      <div className="bulk-history-item__meta">
+                        <span>{formatUserType(row.userType)}</span>
+                        <span>
+                          {row.source === 'admin_manual' ? 'Sent by admin' : 'Auto on signup'}
+                        </span>
+                        <span>
+                          {row.createdAt
+                            ? new Date(row.createdAt).toLocaleString()
+                            : 'Just now'}
+                        </span>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+        </div>
+      ) : channel === 'sms' ? (
         <div className="bulk-card bulk-coming-soon">
           <MessageSquare size={40} />
           <p>Bulk SMS will use the same audience rules once Twilio is connected.</p>

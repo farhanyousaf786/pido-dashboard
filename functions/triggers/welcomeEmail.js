@@ -1,7 +1,12 @@
 const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { getAdminApp } = require('../firebaseAdmin');
 const { sendEmail } = require('../utils/notify');
-const { buildWelcomeEmail, normalizeUserType } = require('../utils/welcomeEmail');
+const {
+  buildWelcomeEmail,
+  normalizeUserType,
+  loadWelcomeTemplates,
+  recordWelcomeEmailSend,
+} = require('../utils/welcomeEmail');
 
 async function resolveUserEmail(admin, uid, userData) {
   const direct = String(userData?.email || '').trim();
@@ -92,7 +97,8 @@ const onUserWelcomeEmail = onDocumentWritten('users/{uid}', async (event) => {
   }
 
   const recipientName = await resolveUserName(admin, uid, data);
-  const welcome = buildWelcomeEmail({ userType, recipientName });
+  const templates = await loadWelcomeTemplates(admin);
+  const welcome = buildWelcomeEmail({ userType, recipientName, templates });
   if (!welcome) return;
 
   try {
@@ -113,9 +119,33 @@ const onUserWelcomeEmail = onDocumentWritten('users/{uid}', async (event) => {
       { merge: true }
     );
 
+    await recordWelcomeEmailSend(admin, {
+      uid,
+      email,
+      userType,
+      recipientName,
+      subject: welcome.subject,
+      source: 'signup',
+      status: 'sent',
+    });
+
     console.log(`[welcomeEmail] sent to ${uid} (${userType})`);
   } catch (err) {
     console.error(`[welcomeEmail] failed for ${uid}:`, err.message);
+    try {
+      await recordWelcomeEmailSend(admin, {
+        uid,
+        email,
+        userType,
+        recipientName,
+        subject: welcome.subject,
+        source: 'signup',
+        status: 'failed',
+        error: err.message || 'failed',
+      });
+    } catch (_) {
+      // ignore history write errors
+    }
   }
 });
 

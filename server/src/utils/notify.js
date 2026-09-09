@@ -10,6 +10,13 @@ function assertSendsAllowed() {
   }
 }
 
+export function applyTemplate(template, vars = {}) {
+  return String(template || '').replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => {
+    if (vars[key] == null) return '';
+    return String(vars[key]);
+  });
+}
+
 export function buildPidoEmailHtml({ title, bodyHtml, recipientName }) {
   const greeting = recipientName ? `Hi ${recipientName},` : 'Hi,';
   return `

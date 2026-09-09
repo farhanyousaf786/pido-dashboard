@@ -1,7 +1,14 @@
 const express = require('express');
 const { getAdminApp } = require('../firebaseAdmin');
 const { sendEmail, buildPidoEmailHtml } = require('../utils/notify');
-const { buildWelcomeEmail } = require('../utils/welcomeEmail');
+const {
+  buildWelcomeEmail,
+  loadWelcomeTemplates,
+  mergeWelcomeTemplates,
+  DEFAULT_WELCOME_TEMPLATES,
+  WELCOME_TEMPLATE_DOC,
+  recordWelcomeEmailSend,
+} = require('../utils/welcomeEmail');
 const { collectAudienceRecipients, normalizeAudienceInput } = require('../utils/userContact');
 
 const emailRouter = express.Router();
@@ -112,7 +119,9 @@ emailRouter.post('/welcome', async (req, res) => {
       });
     }
 
-    const welcome = buildWelcomeEmail({ userType, recipientName });
+    const admin = getAdminApp();
+    const templates = await loadWelcomeTemplates(admin);
+    const welcome = buildWelcomeEmail({ userType, recipientName, templates });
     if (!welcome) {
       return res.status(400).json({
         success: false,
@@ -128,7 +137,6 @@ emailRouter.post('/welcome', async (req, res) => {
       recipientName,
     });
 
-    const admin = getAdminApp();
     await admin.firestore().collection('users').doc(String(uid)).set(
       {
         welcomeEmailSent: true,
@@ -137,6 +145,17 @@ emailRouter.post('/welcome', async (req, res) => {
       },
       { merge: true }
     );
+
+    await recordWelcomeEmailSend(admin, {
+      uid: String(uid),
+      email,
+      userType,
+      recipientName: recipientName || '',
+      subject: welcome.subject,
+      source: 'admin_manual',
+      status: 'sent',
+      sentBy: req.user?.uid || req.user?.email || null,
+    });
 
     return res.json({
       success: true,
@@ -147,6 +166,106 @@ emailRouter.post('/welcome', async (req, res) => {
     return res.status(e.statusCode || 500).json({
       success: false,
       message: e.message || 'Failed to send welcome email',
+    });
+  }
+});
+
+emailRouter.get('/welcome/template', async (_req, res) => {
+  try {
+    const admin = getAdminApp();
+    const templates = await loadWelcomeTemplates(admin);
+    return res.json({
+      success: true,
+      data: {
+        templates,
+        defaults: DEFAULT_WELCOME_TEMPLATES,
+        placeholders: ['{{name}}'],
+      },
+    });
+  } catch (e) {
+    return res.status(500).json({
+      success: false,
+      message: e.message || 'Failed to load welcome template',
+    });
+  }
+});
+
+emailRouter.put('/welcome/template', async (req, res) => {
+  try {
+    const incoming = req.body?.templates || req.body || {};
+    const templates = mergeWelcomeTemplates(incoming);
+    if (!templates.customer.subject || !templates.customer.body) {
+      return res.status(400).json({
+        success: false,
+        message: 'Customer subject and body are required',
+      });
+    }
+    if (!templates.serviceProvider.subject || !templates.serviceProvider.body) {
+      return res.status(400).json({
+        success: false,
+        message: 'Provider subject and body are required',
+      });
+    }
+
+    const admin = getAdminApp();
+    await admin.firestore().doc(WELCOME_TEMPLATE_DOC).set(
+      {
+        ...templates,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedBy: req.user?.uid || req.user?.email || null,
+      },
+      { merge: true }
+    );
+
+    return res.json({
+      success: true,
+      message: 'Welcome email template saved',
+      data: { templates },
+    });
+  } catch (e) {
+    return res.status(500).json({
+      success: false,
+      message: e.message || 'Failed to save welcome template',
+    });
+  }
+});
+
+emailRouter.get('/welcome/history', async (req, res) => {
+  try {
+    const admin = getAdminApp();
+    const limit = Math.min(parseInt(req.query.limit || '30', 10) || 30, 100);
+    const snap = await admin
+      .firestore()
+      .collection('welcomeEmailSends')
+      .orderBy('createdAt', 'desc')
+      .limit(limit)
+      .get();
+
+    const sends = snap.docs.map((doc) => {
+      const d = doc.data() || {};
+      const createdAt = d.createdAt?.toDate?.()
+        ? d.createdAt.toDate().toISOString()
+        : d.createdAt || null;
+      return {
+        id: doc.id,
+        uid: d.uid || null,
+        email: d.email || '',
+        userType: d.userType || '',
+        recipientName: d.recipientName || '',
+        subject: d.subject || '',
+        source: d.source || 'signup',
+        status: d.status || 'sent',
+        error: d.error || null,
+        sentBy: d.sentBy || null,
+        createdAt,
+      };
+    });
+
+    return res.json({ success: true, data: { sends } });
+  } catch (e) {
+    return res.status(500).json({
+      success: false,
+      message: e.message || 'Failed to load welcome email history',
     });
   }
 });
