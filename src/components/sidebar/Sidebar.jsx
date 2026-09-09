@@ -1,4 +1,5 @@
 import React from 'react';
+import packageJson from '../../../package.json';
 import {
   LayoutDashboard,
   Users,
@@ -8,12 +9,18 @@ import {
   Bell,
   Calendar,
   ClipboardList,
+  ShieldAlert,
+  Mail,
+  MessageSquare,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { key: 'verifications', label: 'Verifications', icon: ShieldCheck },
+  { key: 'chatSafety', label: 'Chat Safety', icon: ShieldAlert },
+  { key: 'superChat', label: 'Super Chat', icon: MessageSquare },
   { key: 'notifications', label: 'Notifications', icon: Bell },
+  { key: 'bulkMessaging', label: 'Bulk Messaging', icon: Mail },
   { key: 'bookings', label: 'Bookings', icon: Calendar },
   { key: 'users', label: 'Users', icon: Users },
   { key: 'forms', label: 'Forms', icon: ClipboardList },
@@ -51,6 +58,18 @@ function Sidebar({ activePage, onNavigate, isOpen }) {
           );
         })}
       </nav>
+      <div
+        className="app-sidebar__version"
+        style={{
+          marginTop: 'auto',
+          padding: '1rem 0.5rem',
+          textAlign: 'center',
+          fontSize: '0.75rem',
+          color: 'var(--color-dark-gray, #64748b)',
+        }}
+      >
+        v{packageJson.version}
+      </div>
     </aside>
   );
 }

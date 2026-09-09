@@ -97,9 +97,20 @@ notificationsRouter.post('/topic', async (req, res) => {
       return res.status(400).json({ success: false, message: 'title and body are required' });
     }
 
+    const rawTopic = String(
+      topic || process.env.DEFAULT_TOPIC || 'pido-all'
+    ).trim();
+    if (!rawTopic) {
+      return res.status(400).json({ success: false, message: 'topic is required' });
+    }
+
+    // App inbox queries type "pido-all" (lowercase). Devices subscribe to FCM "Pido-all".
+    const typeName = rawTopic.toLowerCase() === 'pido-all' ? 'pido-all' : rawTopic;
+    const fcmTopic = typeName === 'pido-all' ? 'Pido-all' : rawTopic;
+
     const admin = getAdminApp();
     const message = {
-      topic: topic || process.env.DEFAULT_TOPIC || 'Pido-all',
+      topic: fcmTopic,
       notification: {
         title: String(title),
         body: String(body),
@@ -107,6 +118,7 @@ notificationsRouter.post('/topic', async (req, res) => {
       },
       data: {
         type: 'topic',
+        topic: typeName,
         timestamp: new Date().toISOString(),
         ...(normalizeData(data) || {}),
       },
@@ -128,10 +140,29 @@ notificationsRouter.post('/topic', async (req, res) => {
 
     const messageId = await admin.messaging().send(message);
 
+    // Persist a broadcast record. `type` is lowercase "pido-all" for the all-users topic.
+    try {
+      await admin.firestore().collection('notifications').add({
+        title: String(title),
+        body: String(body),
+        type: typeName,
+        topic: typeName,
+        status: 'sent',
+        isRead: false,
+        read: false,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        data: cloneDataForFirestore(data) || { action: 'GENERAL' },
+      });
+    } catch (persistErr) {
+      console.error('Failed to persist topic notification to Firestore:', persistErr);
+      // Push was successful; do not fail the request because the history write failed.
+    }
+
     return res.json({
       success: true,
       message: 'Topic notification sent successfully',
-      result: { messageId, topic: message.topic },
+      result: { messageId, topic: fcmTopic, type: typeName },
     });
   } catch (e) {
     return res.status(500).json({

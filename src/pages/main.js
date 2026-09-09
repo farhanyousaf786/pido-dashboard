@@ -8,11 +8,14 @@ import UserDetailPage from './users/components/UserDetail.jsx';
 import BookingsPage from './bookings/Bookings.jsx';
 import BookingDetailPage from './bookings/BookingDetail.jsx';
 import VerificationsPage from './verifications/Verifications';
+import ChatSafetyPage from './chatSafety/ChatSafety';
 import NotificationsPage from './notifications/Notifications';
 import ReferralPage from './referral/Referral';
 import LandingFormsPage from './forms/LandingForms.jsx';
 import SettingsPage from './settings/Settings';
 import AdminSettingsPage from './settings/AdminSettings';
+import BulkMessagingPage from './bulkMessaging/BulkMessaging.jsx';
+import SuperChatPage from './superChat/SuperChat.jsx';
 import { useAuth } from '../core/auth/AuthContext';
 import Login from './auth/Login';
 
@@ -23,7 +26,10 @@ const PAGES = {
   bookings: 'bookings',
   bookingDetail: 'bookingDetail',
   verifications: 'verifications',
+  chatSafety: 'chatSafety',
+  superChat: 'superChat',
   notifications: 'notifications',
+  bulkMessaging: 'bulkMessaging',
   referral: 'referral',
   forms: 'forms',
   settings: 'settings',
@@ -101,8 +107,14 @@ function Main() {
         );
       case PAGES.verifications:
         return <VerificationsPage />;
+      case PAGES.chatSafety:
+        return <ChatSafetyPage />;
+      case PAGES.superChat:
+        return <SuperChatPage />;
       case PAGES.notifications:
         return <NotificationsPage />;
+      case PAGES.bulkMessaging:
+        return <BulkMessagingPage />;
       case PAGES.referral:
         return (
           <ReferralPage

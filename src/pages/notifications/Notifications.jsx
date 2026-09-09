@@ -26,7 +26,7 @@ export default function Notifications() {
     body: '',
     data: '',
     image: '',
-    topic: 'Pido-all',
+    topic: 'pido-all',
     action: 'GENERAL',
     bookingId: '',
     providerId: '',
@@ -172,7 +172,7 @@ export default function Notifications() {
           body: '',
           data: '',
           image: '',
-          topic: 'Pido-all',
+          topic: 'pido-all',
           action: 'GENERAL',
           bookingId: '',
           providerId: '',
@@ -283,10 +283,9 @@ export default function Notifications() {
                   name="topic"
                   value={formData.topic}
                   onChange={handleInputChange}
-                  placeholder="Pido-all"
-                  readOnly
+                  placeholder="pido-all"
                 />
-                <small>Default topic for all Pido app users</small>
+                <small>Topic name is also saved as notification type in Firestore</small>
               </div>
             )}
 

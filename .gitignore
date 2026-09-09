@@ -5,6 +5,8 @@ dist
 .env
 .env.local
 .env.production
+functions/.env
+server/.env
 .firebase
 
 # Firebase Admin SDK keys (never commit)

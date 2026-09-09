@@ -32,6 +32,22 @@
         }
       },
       {
+        "source": "/admin/email/**",
+        "function": {
+          "functionId": "notificationsApi",
+          "region": "us-central1",
+          "codebase": "dashboard"
+        }
+      },
+      {
+        "source": "/admin/super-chat/**",
+        "function": {
+          "functionId": "notificationsApi",
+          "region": "us-central1",
+          "codebase": "dashboard"
+        }
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

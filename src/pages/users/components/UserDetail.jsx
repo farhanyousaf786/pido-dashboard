@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, User, Phone, MapPin, Calendar, Shield, CheckCircle, XCircle, Clock, Globe, Info, Bell, FlaskConical, Loader2 } from 'lucide-react';
+import { ArrowLeft, User, Phone, MapPin, Calendar, Shield, CheckCircle, XCircle, Clock, Globe, Info, Bell, FlaskConical, Loader2, Mail } from 'lucide-react';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../../core/firebase/firebaseConfig.js';
 import { UserHelpers } from '../../../core/models/User.js';
 import { notificationService } from '../../../core/services/notificationService.js';
+import { emailService } from '../../../core/services/emailService.js';
+import UserSuperChat from './UserSuperChat.jsx';
 
 export default function UserDetail({ user, onBack, onUserPatch }) {
   const [loading, setLoading] = useState(false);
@@ -18,6 +20,18 @@ export default function UserDetail({ user, onBack, onUserPatch }) {
     body: '',
   });
   const [pushResult, setPushResult] = useState(null);
+  const [emailForm, setEmailForm] = useState({ to: '', subject: '', message: '' });
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailResult, setEmailResult] = useState(null);
+  const [welcomeLoading, setWelcomeLoading] = useState(false);
+  const [emailSaving, setEmailSaving] = useState(false);
+
+  useEffect(() => {
+    setEmailForm((prev) => ({
+      ...prev,
+      to: user?.email ? String(user.email).trim() : '',
+    }));
+  }, [user?.uid, user?.email]);
 
   const isOnline = user?.isOnline === true;
   const isProvider = UserHelpers.isServiceProvider(user);
@@ -28,6 +42,11 @@ export default function UserDetail({ user, onBack, onUserPatch }) {
   const handlePushChange = (e) => {
     const { name, value } = e.target;
     setPushForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleEmailChange = (e) => {
+    const { name, value } = e.target;
+    setEmailForm((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleTestUserToggle = async () => {
@@ -46,6 +65,87 @@ export default function UserDetail({ user, onBack, onUserPatch }) {
       window.alert(e?.message || 'Could not update test user flag. Check Firestore rules.');
     } finally {
       setTestUserSaving(false);
+    }
+  };
+
+  const handleSendEmail = async () => {
+    const to = String(emailForm.to || '').trim();
+    if (!to || !to.includes('@')) {
+      setEmailResult({ success: false, message: 'Enter a valid recipient email' });
+      return;
+    }
+    if (!emailForm.subject || !emailForm.message) {
+      setEmailResult({ success: false, message: 'Subject and message are required' });
+      return;
+    }
+
+    setEmailLoading(true);
+    setEmailResult(null);
+    try {
+      const res = await emailService.sendEmail({
+        to,
+        subject: emailForm.subject,
+        message: emailForm.message,
+        recipientName: displayName,
+      });
+      setEmailResult({ success: true, message: res.message || 'Email sent' });
+      setEmailForm((prev) => ({ ...prev, subject: '', message: '' }));
+    } catch (e) {
+      setEmailResult({ success: false, message: e.message || 'Failed to send email' });
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
+  const handleSendWelcomeEmail = async () => {
+    const to = String(emailForm.to || '').trim();
+    if (!to || !to.includes('@')) {
+      setEmailResult({ success: false, message: 'Enter a valid recipient email' });
+      return;
+    }
+    if (!user?.userType) {
+      setEmailResult({ success: false, message: 'User type is missing' });
+      return;
+    }
+
+    setWelcomeLoading(true);
+    setEmailResult(null);
+    try {
+      const res = await emailService.sendWelcomeEmail({
+        uid: user.uid,
+        email: to,
+        userType: user.userType,
+        recipientName: displayName,
+      });
+      setEmailResult({ success: true, message: res.message || 'Welcome email sent' });
+    } catch (e) {
+      setEmailResult({ success: false, message: e.message || 'Failed to send welcome email' });
+    } finally {
+      setWelcomeLoading(false);
+    }
+  };
+
+  const handleSaveUserEmail = async () => {
+    if (!user?.uid) return;
+    const to = String(emailForm.to || '').trim();
+    if (!to || !to.includes('@')) {
+      setEmailResult({ success: false, message: 'Enter a valid email to save' });
+      return;
+    }
+
+    setEmailSaving(true);
+    setEmailResult(null);
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        email: to,
+        updatedAt: serverTimestamp(),
+      });
+      onUserPatch?.({ email: to });
+      setEmailResult({ success: true, message: 'Email saved to user profile' });
+    } catch (e) {
+      setEmailResult({ success: false, message: e.message || 'Could not save email' });
+    } finally {
+      setEmailSaving(false);
     }
   };
 
@@ -350,6 +450,92 @@ export default function UserDetail({ user, onBack, onUserPatch }) {
                 )}
               </div>
             </div>
+          </div>
+
+          <div className="detail-section">
+            <h3 className="section-title"><Mail size={16} /> Email</h3>
+            <div className="push-notification">
+              <div className="push-form">
+                <div className="push-row">
+                  <div className="push-field">
+                    <span className="detail-label">To</span>
+                    <input
+                      className="push-input"
+                      type="email"
+                      name="to"
+                      value={emailForm.to}
+                      onChange={handleEmailChange}
+                      placeholder="user@example.com"
+                    />
+                    {!user?.email ? (
+                      <small className="user-email-hint">No email on file — enter one to send or save.</small>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="push-row">
+                  <div className="push-field">
+                    <span className="detail-label">Subject</span>
+                    <input
+                      className="push-input"
+                      type="text"
+                      name="subject"
+                      value={emailForm.subject}
+                      onChange={handleEmailChange}
+                      placeholder="Email subject"
+                    />
+                  </div>
+                </div>
+                <div className="push-row">
+                  <div className="push-field">
+                    <span className="detail-label">Message</span>
+                    <textarea
+                      className="push-textarea"
+                      name="message"
+                      value={emailForm.message}
+                      onChange={handleEmailChange}
+                      placeholder="Email message"
+                      rows={4}
+                    />
+                  </div>
+                </div>
+                <div className="push-actions user-contact-actions">
+                  <button
+                    type="button"
+                    className="push-send-btn push-send-btn--secondary"
+                    onClick={handleSaveUserEmail}
+                    disabled={emailSaving || !emailForm.to?.includes('@')}
+                  >
+                    {emailSaving ? 'Saving...' : 'Save Email'}
+                  </button>
+                  <button
+                    type="button"
+                    className="push-send-btn"
+                    onClick={handleSendEmail}
+                    disabled={emailLoading || !emailForm.to?.includes('@') || !emailForm.subject || !emailForm.message}
+                  >
+                    {emailLoading ? 'Sending...' : 'Send Email'}
+                  </button>
+                  <button
+                    type="button"
+                    className="push-send-btn push-send-btn--secondary"
+                    onClick={handleSendWelcomeEmail}
+                    disabled={welcomeLoading || !emailForm.to?.includes('@') || !user.userType}
+                  >
+                    {welcomeLoading ? 'Sending...' : 'Send Welcome Email'}
+                  </button>
+                </div>
+                {emailResult && (
+                  <div className={`push-result ${emailResult.success ? 'success' : 'error'}`}>
+                    <div className="push-result-title">{emailResult.success ? 'Sent' : 'Failed'}</div>
+                    <div className="push-result-message">{emailResult.message}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="detail-section detail-section--full">
+            <UserSuperChat user={user} />
           </div>
         </div>
       </div>
