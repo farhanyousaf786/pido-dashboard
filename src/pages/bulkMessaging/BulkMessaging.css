@@ -885,6 +885,39 @@
   color: #92400e;
 }
 
+.bulk-banner--info {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+}
+
+.bulk-banner--info code {
+  font-size: 0.85em;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.bulk-welcome {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.bulk-welcome__type-toggle {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.bulk-welcome__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
 .bulk-banner__sub {
   font-size: 0.8125rem;
   margin-top: 4px;
