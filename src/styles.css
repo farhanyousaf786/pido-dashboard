@@ -1031,9 +1031,12 @@ body {
 }
 
 .admin-settings.page-shell--wide {
-  max-width: min(1200px, 100%);
-  padding-left: 1rem;
-  padding-right: 1rem;
+  max-width: none;
+  width: 100%;
+  margin-left: 0;
+  margin-right: 0;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
 }
 
 .admin-settings__tabs {
@@ -1063,9 +1066,10 @@ body {
   color: var(--color-dark-primary);
 }
 
-.admin-settings__grid--single {
+.admin-settings__grid.admin-settings__grid--single {
   max-width: none;
   width: 100%;
+  grid-template-columns: 1fr;
 }
 
 .admin-settings__card--checklist {
@@ -1651,6 +1655,12 @@ body {
     grid-template-columns: 1fr minmax(260px, 300px);
     gap: 1.5rem;
     max-width: 960px;
+  }
+
+  .admin-settings__grid.admin-settings__grid--single {
+    max-width: none;
+    width: 100%;
+    grid-template-columns: 1fr;
   }
 
   .admin-settings__card--profile,
