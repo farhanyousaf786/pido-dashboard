@@ -1274,53 +1274,104 @@ body {
   background: inherit;
 }
 
-.testlog-status {
+.testlog-check {
   display: inline-flex;
+  flex-direction: column;
+  align-items: center;
   gap: 4px;
+}
+
+.testlog-checkbox {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 2px solid #c4c4c4;
+  background: #fff;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-}
-
-.testlog-status__btn {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  border: 1px solid #d1d5db;
-  background: #fff;
-  color: #9ca3af;
-  font-weight: 800;
-  font-size: 0.8rem;
-  line-height: 1;
-  cursor: pointer;
   padding: 0;
+  transition: background 0.12s ease, border-color 0.12s ease;
 }
 
-.testlog-status__btn--pass.is-active {
+.testlog-checkbox:hover:not(:disabled) {
+  border-color: var(--color-primary);
+}
+
+.testlog-checkbox.is-checked {
   background: #22c55e;
   border-color: #16a34a;
   color: #fff;
 }
 
-.testlog-status__btn--fail.is-active {
+.testlog-checkbox.is-fail {
   background: #ef4444;
   border-color: #dc2626;
   color: #fff;
 }
 
-.testlog-status__btn--na.is-active {
-  background: #6b7280;
-  border-color: #4b5563;
+.testlog-checkbox:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.testlog-fail-link {
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  font-size: 0.65rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.testlog-fail-link:hover:not(:disabled),
+.testlog-fail-link.is-active {
+  color: #dc2626;
+}
+
+.testlog-fail-link:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.testlog-chip__box {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1.5px solid #c4c4c4;
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.55rem;
+  line-height: 1;
+}
+
+.testlog-chip__box--pass {
+  background: #22c55e;
+  border-color: #16a34a;
   color: #fff;
 }
 
-.testlog-status__btn:hover:not(:disabled):not(.is-active) {
-  border-color: var(--color-primary);
-  color: var(--color-dark-primary);
+.testlog-chip__box--fail {
+  background: #ef4444;
+  border-color: #dc2626;
+  color: #fff;
 }
 
-.testlog-status__btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+.testlog-empty__title {
+  font-weight: 700;
+  color: var(--color-dim-black) !important;
+  margin-bottom: 8px !important;
+}
+
+.testlog-empty .admin-settings__btn {
+  margin-top: 12px;
 }
 
 .testlog-date {

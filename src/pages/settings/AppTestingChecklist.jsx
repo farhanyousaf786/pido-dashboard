@@ -7,6 +7,7 @@ import {
   Save,
   Loader,
   Table2,
+  Check,
 } from 'lucide-react';
 import { useAuth } from '../../core/auth/AuthContext';
 import {
@@ -219,14 +220,26 @@ export default function AppTestingChecklist() {
             App testing log
           </h2>
           <p className="admin-settings__hint admin-settings__hint--tight">
-            1) Add a date row · 2) Mark each feature with <strong>✓ Pass</strong>,{' '}
-            <strong>✗ Fail</strong>, or <strong>N/A</strong>
+            Add a date row, then use the <strong>checkbox</strong> under each feature to mark it done.
           </p>
         </div>
         <div className="testlog-legend">
-          <span className="testlog-chip testlog-chip--pass">✓ Pass</span>
-          <span className="testlog-chip testlog-chip--fail">✗ Fail</span>
-          <span className="testlog-chip testlog-chip--na">N/A</span>
+          <span className="testlog-chip testlog-chip--pass">
+            <span className="testlog-chip__box testlog-chip__box--pass" aria-hidden>
+              <Check size={12} strokeWidth={3} />
+            </span>
+            Done / Pass
+          </span>
+          <span className="testlog-chip testlog-chip--fail">
+            <span className="testlog-chip__box testlog-chip__box--fail" aria-hidden>
+              ✗
+            </span>
+            Fail
+          </span>
+          <span className="testlog-chip">
+            <span className="testlog-chip__box" aria-hidden />
+            Not tested
+          </span>
         </div>
       </div>
 
@@ -372,8 +385,27 @@ export default function AppTestingChecklist() {
               {sessions.length === 0 ? (
                 <tr>
                   <td colSpan={columns.length + 2} className="testlog-empty">
-                    <p>No test sessions yet.</p>
-                    <p>Use <strong>Add date row</strong> above, then mark ✓ / ✗ on each feature.</p>
+                    <p className="testlog-empty__title">No date row yet — so no checkboxes to click.</p>
+                    <p>
+                      Click <strong>Add date row</strong> above (orange button). Then a checkbox appears
+                      under every feature — tick it when that feature is done.
+                    </p>
+                    <button
+                      type="button"
+                      className="admin-settings__btn admin-settings__btn--primary"
+                      disabled={busyKey === 'add-session' || !newSessionDate}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleAddSession(e);
+                      }}
+                    >
+                      {busyKey === 'add-session' ? (
+                        <Loader size={16} className="spinning" />
+                      ) : (
+                        <Plus size={16} />
+                      )}
+                      Add today&apos;s row &amp; show checkboxes
+                    </button>
                   </td>
                 </tr>
               ) : (
@@ -401,44 +433,37 @@ export default function AppTestingChecklist() {
                         const status = session.results?.[col.id] || 'unchecked';
                         const key = `cell-${session.id}-${col.id}`;
                         const busy = busyKey === key;
+                        const isPass = status === 'pass';
+                        const isFail = status === 'fail';
                         return (
                           <td key={col.id}>
-                            <div className="testlog-status">
+                            <div className="testlog-check">
                               <button
                                 type="button"
-                                className={`testlog-status__btn testlog-status__btn--pass ${
-                                  status === 'pass' ? 'is-active' : ''
-                                }`}
+                                role="checkbox"
+                                aria-checked={isPass}
+                                className={`testlog-checkbox ${
+                                  isPass ? 'is-checked' : ''
+                                } ${isFail ? 'is-fail' : ''}`}
                                 onClick={() => handleSetCell(session, col.id, 'pass')}
                                 disabled={busy}
-                                title="Pass"
-                                aria-label="Pass"
+                                title={
+                                  isPass
+                                    ? 'Checked = done. Click again to uncheck.'
+                                    : 'Mark as done / pass'
+                                }
                               >
-                                ✓
+                                {isPass ? <Check size={18} strokeWidth={3} /> : null}
+                                {isFail ? <X size={16} strokeWidth={3} /> : null}
                               </button>
                               <button
                                 type="button"
-                                className={`testlog-status__btn testlog-status__btn--fail ${
-                                  status === 'fail' ? 'is-active' : ''
-                                }`}
+                                className={`testlog-fail-link ${isFail ? 'is-active' : ''}`}
                                 onClick={() => handleSetCell(session, col.id, 'fail')}
                                 disabled={busy}
-                                title="Fail"
-                                aria-label="Fail"
+                                title="Mark as fail"
                               >
-                                ✗
-                              </button>
-                              <button
-                                type="button"
-                                className={`testlog-status__btn testlog-status__btn--na ${
-                                  status === 'na' ? 'is-active' : ''
-                                }`}
-                                onClick={() => handleSetCell(session, col.id, 'na')}
-                                disabled={busy}
-                                title="N/A"
-                                aria-label="N/A"
-                              >
-                                —
+                                Fail
                               </button>
                             </div>
                           </td>
