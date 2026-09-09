@@ -29,6 +29,19 @@ async function getJson(path) {
   return data;
 }
 
+async function deleteJson(path) {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${EMAIL_BASE}${path}`, {
+    method: 'DELETE',
+    headers,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.message || `Request failed (${res.status})`);
+  }
+  return data;
+}
+
 export const bulkMessagingService = {
   async previewBulkEmail(audiencePayload) {
     return postJson('/bulk/preview', audiencePayload);
@@ -40,5 +53,9 @@ export const bulkMessagingService = {
 
   async getHistory(limit = 20) {
     return getJson(`/bulk/history?limit=${limit}`);
+  },
+
+  async deleteHistoryItem(id) {
+    return deleteJson(`/bulk/history/${encodeURIComponent(id)}`);
   },
 };

@@ -349,3 +349,25 @@ emailRouter.get('/bulk/history', async (req, res) => {
     });
   }
 });
+
+emailRouter.delete('/bulk/history/:id', async (req, res) => {
+  try {
+    const id = String(req.params.id || '').trim();
+    if (!id) {
+      return res.status(400).json({ success: false, message: 'Campaign id is required' });
+    }
+    const admin = getAdminApp();
+    const ref = admin.firestore().collection('bulkMessageCampaigns').doc(id);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      return res.status(404).json({ success: false, message: 'Campaign not found' });
+    }
+    await ref.delete();
+    return res.json({ success: true, message: 'Removed from history', data: { id } });
+  } catch (e) {
+    return res.status(500).json({
+      success: false,
+      message: e.message || 'Failed to delete email history item',
+    });
+  }
+});

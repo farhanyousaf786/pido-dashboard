@@ -16,6 +16,7 @@ import {
   List,
   Clock,
   Plus,
+  Trash2,
 } from 'lucide-react';
 import { collection, limit, onSnapshot, query } from 'firebase/firestore';
 import { db } from '../../core/firebase/firebaseConfig.js';
@@ -220,6 +221,7 @@ export default function BulkMessaging() {
   const [emailStatusError, setEmailStatusError] = useState('');
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyDeletingId, setHistoryDeletingId] = useState('');
 
   const loadHistory = async () => {
     setHistoryLoading(true);
@@ -230,6 +232,21 @@ export default function BulkMessaging() {
       // History is optional — don't block the page
     } finally {
       setHistoryLoading(false);
+    }
+  };
+
+  const deleteHistoryItem = async (id) => {
+    if (!id || historyDeletingId) return;
+    const ok = window.confirm('Remove this entry from Past emails? (Does not unsend the email.)');
+    if (!ok) return;
+    setHistoryDeletingId(id);
+    try {
+      await bulkMessagingService.deleteHistoryItem(id);
+      setHistory((prev) => prev.filter((c) => c.id !== id));
+    } catch (e) {
+      window.alert(e.message || 'Failed to delete');
+    } finally {
+      setHistoryDeletingId('');
     }
   };
 
@@ -1084,15 +1101,31 @@ export default function BulkMessaging() {
                 <article key={c.id} className="bulk-history-item">
                   <div className="bulk-history-item__main">
                     <strong>{c.subject || '(no subject)'}</strong>
-                    <span
-                      className={`bulk-history-status ${
-                        c.failureCount > 0
-                          ? 'bulk-history-status--warn'
-                          : 'bulk-history-status--ok'
-                      }`}
-                    >
-                      {c.failureCount > 0 ? 'Completed with errors' : 'Sent'}
-                    </span>
+                    <div className="bulk-history-item__actions">
+                      <span
+                        className={`bulk-history-status ${
+                          c.failureCount > 0
+                            ? 'bulk-history-status--warn'
+                            : 'bulk-history-status--ok'
+                        }`}
+                      >
+                        {c.failureCount > 0 ? 'Completed with errors' : 'Sent'}
+                      </span>
+                      <button
+                        type="button"
+                        className="bulk-history-item__delete"
+                        onClick={() => deleteHistoryItem(c.id)}
+                        disabled={historyDeletingId === c.id}
+                        title="Delete from history"
+                        aria-label="Delete from history"
+                      >
+                        {historyDeletingId === c.id ? (
+                          <Loader size={14} className="spinning" />
+                        ) : (
+                          <Trash2 size={14} />
+                        )}
+                      </button>
+                    </div>
                   </div>
                   {c.messagePreview ? (
                     <p className="bulk-history-item__preview">{c.messagePreview}</p>
