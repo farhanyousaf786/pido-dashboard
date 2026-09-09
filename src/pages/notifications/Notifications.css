@@ -599,3 +599,108 @@
 :root[data-theme="dark"] .result-error strong {
   color: #f87171;
 }
+
+.notif-filter-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 8px 0 12px;
+}
+
+@media (max-width: 640px) {
+  .notif-filter-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.notif-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.notif-filter-field label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.notif-filter-field select {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.875rem;
+  background: #fff;
+  color: #111827;
+}
+
+.notif-filter-field select:focus {
+  outline: none;
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.15);
+}
+
+.notif-filter-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  margin-bottom: 14px;
+}
+
+.notif-filter-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+}
+
+.notif-picker-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.notif-picker-count {
+  font-size: 0.75rem;
+  color: #6b7280;
+  font-weight: 600;
+}
+
+.btn-select-matching {
+  border: 1px solid #f59e0b;
+  background: rgba(245, 158, 11, 0.08);
+  color: #92400e;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-select-matching:hover:not(:disabled) {
+  background: rgba(245, 158, 11, 0.16);
+}
+
+.btn-select-matching:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.notif-filter-results {
+  max-height: 280px;
+  overflow: auto;
+  margin-top: 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  position: relative;
+}
+
+.dropdown-item.is-selected {
+  background: rgba(245, 158, 11, 0.1);
+}

@@ -14,12 +14,49 @@ import { db } from '../../core/firebase/firebaseConfig.js';
 import { notificationService } from '../../core/services/notificationService';
 import './Notifications.css';
 
+const DEFAULT_FILTERS = {
+  userType: '',
+  accountStatus: '',
+  signupMethod: '',
+  isOnline: '',
+  signupComplete: false,
+  profileComplete: false,
+};
+
+function normalizeProviderId(id) {
+  const p = String(id || '').trim().toLowerCase();
+  if (p === 'google' || p === 'google.com') return 'google';
+  if (p === 'apple' || p === 'apple.com') return 'apple';
+  if (p === 'phonenumber' || p === 'phone' || p === 'phone_number') return 'phone';
+  return p;
+}
+
+function hasSocialProvider(user) {
+  const providers = (Array.isArray(user.provider) ? user.provider : []).map(normalizeProviderId);
+  return providers.some((id) => id === 'google' || id === 'apple');
+}
+
+function hasPhoneProvider(user) {
+  const providers = (Array.isArray(user.provider) ? user.provider : []).map(normalizeProviderId);
+  if (providers.includes('phone')) return true;
+  const digits = String(user.phoneNumber || '').replace(/\D/g, '');
+  const email = String(user.email || '').trim().toLowerCase();
+  return Boolean(digits && email === `${digits}@gmail.com`);
+}
+
+function formatUserType(type) {
+  if (type === 'serviceProvider') return 'Provider';
+  if (type === 'customer') return 'Customer';
+  return type || '';
+}
+
 export default function Notifications() {
   const [activeTab, setActiveTab] = useState('topic');
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -39,20 +76,69 @@ export default function Notifications() {
   });
   const [result, setResult] = useState(null);
 
+  const hasActiveFilters = useMemo(
+    () =>
+      Boolean(
+        filters.userType ||
+          filters.accountStatus ||
+          filters.signupMethod ||
+          filters.isOnline ||
+          filters.signupComplete ||
+          filters.profileComplete
+      ),
+    [filters]
+  );
+
   const filteredUsers = useMemo(() => {
-    if (!searchTerm) return users;
-    const lower = searchTerm.toLowerCase();
-    return users.filter((user) => {
-      const name = (user.name || '').toString().toLowerCase();
-      const email = (user.email || '').toString().toLowerCase();
-      const phone = (user.phoneNumber || '').toString();
-      return (
-        name.includes(lower) ||
-        email.includes(lower) ||
-        phone.includes(searchTerm)
-      );
-    });
-  }, [users, searchTerm]);
+    let rows = users;
+
+    if (filters.userType) {
+      rows = rows.filter((u) => u.userType === filters.userType);
+    }
+    if (filters.accountStatus) {
+      rows = rows.filter((u) => {
+        const status = String(u.accountStatus || '').trim();
+        if (filters.accountStatus === 'unverified') {
+          return !status || status === 'unverified';
+        }
+        return status === filters.accountStatus;
+      });
+    }
+    if (filters.isOnline === 'true') {
+      rows = rows.filter((u) => u.isOnline === true);
+    } else if (filters.isOnline === 'false') {
+      rows = rows.filter((u) => u.isOnline !== true);
+    }
+    if (filters.signupMethod === 'social') {
+      rows = rows.filter((u) => hasSocialProvider(u));
+    } else if (filters.signupMethod === 'phone') {
+      rows = rows.filter((u) => hasPhoneProvider(u));
+    }
+    if (filters.signupComplete) {
+      rows = rows.filter((u) => u.signupComplete === true);
+    }
+    if (filters.profileComplete) {
+      rows = rows.filter((u) => u.profileComplete === true);
+    }
+
+    if (searchTerm) {
+      const lower = searchTerm.toLowerCase();
+      rows = rows.filter((user) => {
+        const name = (user.name || '').toString().toLowerCase();
+        const email = (user.email || '').toString().toLowerCase();
+        const phone = (user.phoneNumber || '').toString();
+        return (
+          name.includes(lower) ||
+          email.includes(lower) ||
+          phone.includes(searchTerm)
+        );
+      });
+    }
+
+    return rows.slice(0, 100);
+  }, [users, searchTerm, filters]);
+
+  const showUserPicker = Boolean(searchTerm) || hasActiveFilters;
 
   useEffect(() => {
     if (activeTab !== 'users') return;
@@ -71,6 +157,11 @@ export default function Notifications() {
             email: (data.email || '').toString(),
             phoneNumber: (data.phoneNumber || '').toString(),
             userType: (data.userType || '').toString(),
+            accountStatus: (data.accountStatus || '').toString(),
+            isOnline: data.isOnline === true,
+            provider: Array.isArray(data.provider) ? data.provider : [],
+            signupComplete: data.userInformation === true,
+            profileComplete: data.isProfileComplete === true,
             fcmToken: (data.fcmToken || '').toString(),
           });
         });
@@ -84,11 +175,20 @@ export default function Notifications() {
     return () => unsub();
   }, [activeTab]);
 
+  const handleFilterChange = (key, value) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  };
+
   const handleUserSelect = (userId) => {
     setSelectedUsers((prev) => {
       if (prev.includes(userId)) return prev.filter((id) => id !== userId);
       return [...prev, userId];
     });
+  };
+
+  const selectAllMatching = () => {
+    const ids = filteredUsers.filter((u) => u.fcmToken).map((u) => u.id);
+    setSelectedUsers((prev) => Array.from(new Set([...prev, ...ids])));
   };
 
   const buildNotificationData = () => {
@@ -185,6 +285,7 @@ export default function Notifications() {
         });
         setSelectedUsers([]);
         setSearchTerm('');
+        setFilters(DEFAULT_FILTERS);
       } else {
         setResult({
           success: false,
@@ -291,6 +392,78 @@ export default function Notifications() {
 
             {activeTab === 'users' && (
               <div className="form-group">
+                <label>Filter by criteria</label>
+                <div className="notif-filter-grid">
+                  <div className="notif-filter-field">
+                    <label htmlFor="notif-user-type">User type</label>
+                    <select
+                      id="notif-user-type"
+                      value={filters.userType}
+                      onChange={(e) => handleFilterChange('userType', e.target.value)}
+                    >
+                      <option value="">All types</option>
+                      <option value="customer">Customers</option>
+                      <option value="serviceProvider">Service providers</option>
+                    </select>
+                  </div>
+                  <div className="notif-filter-field">
+                    <label htmlFor="notif-account-status">Account status</label>
+                    <select
+                      id="notif-account-status"
+                      value={filters.accountStatus}
+                      onChange={(e) => handleFilterChange('accountStatus', e.target.value)}
+                    >
+                      <option value="">All statuses</option>
+                      <option value="approved">Approved</option>
+                      <option value="pending_approval">Pending approval</option>
+                      <option value="rejected">Rejected</option>
+                      <option value="unverified">Unverified</option>
+                    </select>
+                  </div>
+                  <div className="notif-filter-field">
+                    <label htmlFor="notif-online">Online status</label>
+                    <select
+                      id="notif-online"
+                      value={filters.isOnline}
+                      onChange={(e) => handleFilterChange('isOnline', e.target.value)}
+                    >
+                      <option value="">Any</option>
+                      <option value="true">Online now</option>
+                      <option value="false">Offline</option>
+                    </select>
+                  </div>
+                  <div className="notif-filter-field">
+                    <label htmlFor="notif-signup-method">Sign-up method</label>
+                    <select
+                      id="notif-signup-method"
+                      value={filters.signupMethod}
+                      onChange={(e) => handleFilterChange('signupMethod', e.target.value)}
+                    >
+                      <option value="">Any</option>
+                      <option value="social">Google / Apple</option>
+                      <option value="phone">Phone sign-up</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="notif-filter-checks">
+                  <label className="notif-filter-check">
+                    <input
+                      type="checkbox"
+                      checked={filters.signupComplete}
+                      onChange={(e) => handleFilterChange('signupComplete', e.target.checked)}
+                    />
+                    Signup complete only
+                  </label>
+                  <label className="notif-filter-check">
+                    <input
+                      type="checkbox"
+                      checked={filters.profileComplete}
+                      onChange={(e) => handleFilterChange('profileComplete', e.target.checked)}
+                    />
+                    Profile complete only
+                  </label>
+                </div>
+
                 <label>Search & Select Users</label>
                 <div className="search-dropdown-container">
                   <div className="search-input-wrapper">
@@ -304,19 +477,42 @@ export default function Notifications() {
                     />
                   </div>
 
-                  {searchTerm && filteredUsers.length > 0 && (
-                    <div className="dropdown-results">
-                      {filteredUsers
-                        .filter((user) => !selectedUsers.includes(user.id))
-                        .map((user) => (
+                  {showUserPicker && (
+                    <div className="notif-picker-toolbar">
+                      <span className="notif-picker-count">
+                        {filteredUsers.length} match
+                        {filteredUsers.length === 1 ? '' : 'es'}
+                        {filteredUsers.filter((u) => u.fcmToken).length
+                          ? ` · ${filteredUsers.filter((u) => u.fcmToken).length} with FCM`
+                          : ''}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn-select-matching"
+                        onClick={selectAllMatching}
+                        disabled={!filteredUsers.some((u) => u.fcmToken)}
+                      >
+                        Select all with FCM
+                      </button>
+                    </div>
+                  )}
+
+                  {showUserPicker && filteredUsers.length > 0 && (
+                    <div className="dropdown-results notif-filter-results">
+                      {filteredUsers.map((user) => {
+                        const checked = selectedUsers.includes(user.id);
+                        return (
                           <div
                             key={user.id}
-                            className={`dropdown-item ${!user.fcmToken ? 'disabled' : 'clickable'}`}
+                            className={`dropdown-item ${
+                              !user.fcmToken ? 'disabled' : 'clickable'
+                            } ${checked ? 'is-selected' : ''}`}
                             onClick={() => user.fcmToken && handleUserSelect(user.id)}
                           >
                             <div className="tile-content">
                               <div className="tile-header">
                                 <span className="customer-name">
+                                  {checked ? '✓ ' : ''}
                                   {user.name}
                                 </span>
                                 <span
@@ -336,15 +532,24 @@ export default function Notifications() {
                                     <span className="detail-value">{user.phoneNumber}</span>
                                   </div>
                                 )}
+                                {!!user.userType && (
+                                  <div className="detail-item">
+                                    <span className="detail-label">Type:</span>
+                                    <span className="detail-value">
+                                      {formatUserType(user.userType)}
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>
-                        ))}
+                        );
+                      })}
                     </div>
                   )}
 
-                  {searchTerm && filteredUsers.length === 0 && (
-                    <div className="dropdown-empty">No users found</div>
+                  {showUserPicker && filteredUsers.length === 0 && (
+                    <div className="dropdown-empty">No users match these filters</div>
                   )}
                 </div>
 
@@ -366,6 +571,9 @@ export default function Notifications() {
                           <div className="receiver-info">
                             <div className="receiver-name">
                               {user.name}
+                              {user.userType
+                                ? ` · ${formatUserType(user.userType)}`
+                                : ''}
                             </div>
                             <div className="receiver-details">
                               <span className="receiver-email">{user.email || 'N/A'}</span>
