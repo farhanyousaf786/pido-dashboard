@@ -111,7 +111,7 @@ function Settings() {
   };
 
   return (
-    <section className="page-shell admin-settings">
+    <section className={`page-shell admin-settings ${tab === 'testing' ? 'page-shell--wide' : ''}`}>
       <h1 className="page-shell__title">App Settings</h1>
       <p className="page-shell__subtitle">
         Core app config (miles, fees) and a spreadsheet-style app testing log.

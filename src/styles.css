@@ -1026,6 +1026,14 @@ body {
   margin-left: auto;
   margin-right: auto;
   width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+.admin-settings.page-shell--wide {
+  max-width: min(1200px, 100%);
+  padding-left: 1rem;
+  padding-right: 1rem;
 }
 
 .admin-settings__tabs {
@@ -1056,11 +1064,24 @@ body {
 }
 
 .admin-settings__grid--single {
-  max-width: 820px;
+  max-width: none;
+  width: 100%;
 }
 
 .admin-settings__card--checklist {
   max-width: none;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.testlog-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 8px;
 }
 
 .testlog-legend {
@@ -1068,7 +1089,6 @@ body {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin: 10px 0 14px;
 }
 
 .testlog-chip {
@@ -1102,18 +1122,34 @@ body {
   color: #4b5563;
 }
 
-.testlog-meta {
-  margin-left: auto;
+.testlog-meta-bar {
   font-size: 0.75rem;
   color: var(--color-light-grey);
   font-weight: 600;
+  margin-bottom: 10px;
 }
 
 .testlog-toolbar {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: 12px;
+  margin: 12px 0 14px;
+  padding: 12px;
+  border: 1px solid var(--color-light-gray);
+  border-radius: 12px;
+  background: #fafafa;
+}
+
+.testlog-toolbar__block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.testlog-toolbar__label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-dark-grey);
 }
 
 .testlog-toolbar__form {
@@ -1123,17 +1159,29 @@ body {
   align-items: center;
 }
 
-.testlog-toolbar__form .admin-settings__input {
+.testlog-input--date {
+  width: 160px;
+  flex: 0 0 auto;
+}
+
+.testlog-input--grow {
+  flex: 1 1 180px;
   min-width: 160px;
-  flex: 1;
+}
+
+.testlog-toolbar__form .admin-settings__btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .testlog-table-wrap {
   overflow: auto;
   border: 1px solid var(--color-light-gray);
   border-radius: 12px;
-  max-height: min(70vh, 720px);
+  max-height: min(65vh, 640px);
+  width: 100%;
   background: var(--color-white);
+  -webkit-overflow-scrolling: touch;
 }
 
 .testlog-table {
@@ -1148,7 +1196,7 @@ body {
 .testlog-table td {
   border-bottom: 1px solid var(--color-light-gray);
   border-right: 1px solid var(--color-lightest-grey);
-  padding: 10px;
+  padding: 10px 8px;
   vertical-align: middle;
   text-align: center;
 }
@@ -1160,7 +1208,7 @@ body {
   background: #fafafa;
   font-weight: 700;
   color: var(--color-dim-black);
-  min-width: 110px;
+  min-width: 118px;
 }
 
 .testlog-table__sticky {
@@ -1169,7 +1217,7 @@ body {
   z-index: 3;
   background: #fff;
   text-align: left !important;
-  min-width: 130px;
+  min-width: 120px;
 }
 
 .testlog-table thead .testlog-table__sticky {
@@ -1185,7 +1233,7 @@ body {
 }
 
 .testlog-col-head > span:first-child {
-  max-width: 120px;
+  max-width: 110px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1226,42 +1274,53 @@ body {
   background: inherit;
 }
 
-.testlog-cell {
-  width: 44px;
-  height: 36px;
-  border-radius: 8px;
-  border: 1px solid var(--color-light-gray);
-  background: #fff;
-  cursor: pointer;
-  font-weight: 800;
-  font-size: 0.8rem;
+.testlog-status {
   display: inline-flex;
+  gap: 4px;
   align-items: center;
   justify-content: center;
+}
+
+.testlog-status__btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #9ca3af;
+  font-weight: 800;
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
   padding: 0;
 }
 
-.testlog-cell--pass {
+.testlog-status__btn--pass.is-active {
   background: #22c55e;
   border-color: #16a34a;
   color: #fff;
 }
 
-.testlog-cell--fail {
+.testlog-status__btn--fail.is-active {
   background: #ef4444;
   border-color: #dc2626;
   color: #fff;
 }
 
-.testlog-cell--na {
-  background: #e5e7eb;
-  border-color: #9ca3af;
-  color: #374151;
-  font-size: 0.65rem;
+.testlog-status__btn--na.is-active {
+  background: #6b7280;
+  border-color: #4b5563;
+  color: #fff;
 }
 
-.testlog-cell--unchecked:hover {
+.testlog-status__btn:hover:not(:disabled):not(.is-active) {
   border-color: var(--color-primary);
+  color: var(--color-dark-primary);
+}
+
+.testlog-status__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .testlog-date {
@@ -1282,7 +1341,8 @@ body {
   flex-direction: column;
   gap: 6px;
   text-align: left;
-  min-width: 160px;
+  min-width: 140px;
+  max-width: 200px;
 }
 
 .testlog-session-notes {
@@ -1305,7 +1365,7 @@ body {
   display: grid;
   gap: 6px;
   text-align: left;
-  min-width: 180px;
+  min-width: 160px;
 }
 
 .testlog-session-edit__actions {
@@ -1318,6 +1378,10 @@ body {
   text-align: center !important;
   color: var(--color-light-grey);
   padding: 28px 12px !important;
+}
+
+.testlog-empty p {
+  margin: 0 0 6px;
 }
 
 .checklist-progress {

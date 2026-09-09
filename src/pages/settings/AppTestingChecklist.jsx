@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  CheckSquare,
   Plus,
   Trash2,
   Pencil,
@@ -16,7 +15,6 @@ import {
   deleteTestingColumn,
   deleteTestingSession,
   ensureDefaultTestingColumns,
-  nextCellStatus,
   sessionRowTone,
   setSessionCellStatus,
   subscribeTestingColumns,
@@ -40,13 +38,6 @@ function formatWhen(iso) {
   } catch {
     return '—';
   }
-}
-
-function cellLabel(status) {
-  if (status === 'pass') return '✓';
-  if (status === 'fail') return '✗';
-  if (status === 'na') return 'N/A';
-  return '';
 }
 
 export default function AppTestingChecklist() {
@@ -211,9 +202,9 @@ export default function AppTestingChecklist() {
     run(`session-${id}`, () => deleteTestingSession(id));
   };
 
-  const handleCycleCell = (session, columnId) => {
+  const handleSetCell = (session, columnId, status) => {
     const current = session.results?.[columnId] || 'unchecked';
-    const next = nextCellStatus(current);
+    const next = current === status ? 'unchecked' : status;
     run(`cell-${session.id}-${columnId}`, () =>
       setSessionCellStatus(session.id, columnId, next, actorUid)
     );
@@ -221,77 +212,94 @@ export default function AppTestingChecklist() {
 
   return (
     <div className="admin-settings__card admin-settings__card--checklist">
-      <h2 className="admin-settings__card-title">
-        <Table2 size={18} />
-        App testing log
-      </h2>
-      <p className="admin-settings__hint admin-settings__hint--tight">
-        Spreadsheet-style QA log: rows are test dates, columns are features. Click a cell to cycle{' '}
-        <strong>empty → pass → fail → N/A</strong>. Add/edit/remove rows and columns anytime.
-      </p>
+      <div className="testlog-header">
+        <div>
+          <h2 className="admin-settings__card-title" style={{ marginBottom: 4 }}>
+            <Table2 size={18} />
+            App testing log
+          </h2>
+          <p className="admin-settings__hint admin-settings__hint--tight">
+            1) Add a date row · 2) Mark each feature with <strong>✓ Pass</strong>,{' '}
+            <strong>✗ Fail</strong>, or <strong>N/A</strong>
+          </p>
+        </div>
+        <div className="testlog-legend">
+          <span className="testlog-chip testlog-chip--pass">✓ Pass</span>
+          <span className="testlog-chip testlog-chip--fail">✗ Fail</span>
+          <span className="testlog-chip testlog-chip--na">N/A</span>
+        </div>
+      </div>
 
       {error ? (
         <div className="admin-settings__banner admin-settings__banner--error">{error}</div>
       ) : null}
 
-      <div className="testlog-legend">
-        <span className="testlog-chip testlog-chip--pass">✓ Pass</span>
-        <span className="testlog-chip testlog-chip--fail">✗ Fail</span>
-        <span className="testlog-chip testlog-chip--na">N/A</span>
-        <span className="testlog-chip">Empty</span>
-        <span className="testlog-meta">
-          {stats.rows} sessions · {stats.cols} checks · {stats.pass} pass · {stats.fail} fail
-        </span>
+      <div className="testlog-toolbar">
+        <div className="testlog-toolbar__block">
+          <div className="testlog-toolbar__label">New test session</div>
+          <form className="testlog-toolbar__form" onSubmit={handleAddSession}>
+            <input
+              type="date"
+              className="admin-settings__input testlog-input--date"
+              value={newSessionDate}
+              onChange={(e) => setNewSessionDate(e.target.value)}
+              required
+            />
+            <input
+              className="admin-settings__input testlog-input--grow"
+              placeholder="Session notes (optional)"
+              value={newSessionNotes}
+              onChange={(e) => setNewSessionNotes(e.target.value)}
+            />
+            <button
+              type="submit"
+              className="admin-settings__btn admin-settings__btn--primary"
+              disabled={busyKey === 'add-session' || !newSessionDate}
+            >
+              {busyKey === 'add-session' ? (
+                <Loader size={16} className="spinning" />
+              ) : (
+                <Plus size={16} />
+              )}
+              Add date row
+            </button>
+          </form>
+        </div>
+
+        <div className="testlog-toolbar__block">
+          <div className="testlog-toolbar__label">Feature columns</div>
+          <form className="testlog-toolbar__form" onSubmit={handleAddColumn}>
+            <input
+              className="admin-settings__input testlog-input--grow"
+              placeholder="New feature column (e.g. Booking flow)"
+              value={newColumnLabel}
+              onChange={(e) => setNewColumnLabel(e.target.value)}
+            />
+            <button
+              type="submit"
+              className="admin-settings__btn admin-settings__btn--secondary"
+              disabled={busyKey === 'add-col' || !newColumnLabel.trim()}
+            >
+              {busyKey === 'add-col' ? (
+                <Loader size={16} className="spinning" />
+              ) : (
+                <Plus size={16} />
+              )}
+              Add column
+            </button>
+          </form>
+        </div>
       </div>
 
-      <div className="testlog-toolbar">
-        <form className="testlog-toolbar__form" onSubmit={handleAddSession}>
-          <input
-            type="date"
-            className="admin-settings__input"
-            value={newSessionDate}
-            onChange={(e) => setNewSessionDate(e.target.value)}
-            required
-          />
-          <input
-            className="admin-settings__input"
-            placeholder="Session notes (optional)"
-            value={newSessionNotes}
-            onChange={(e) => setNewSessionNotes(e.target.value)}
-          />
-          <button
-            type="submit"
-            className="admin-settings__btn admin-settings__btn--primary admin-settings__btn--inline"
-            disabled={busyKey === 'add-session' || !newSessionDate}
-          >
-            {busyKey === 'add-session' ? <Loader size={16} className="spinning" /> : <Plus size={16} />}
-            Add date row
-          </button>
-        </form>
-
-        <form className="testlog-toolbar__form" onSubmit={handleAddColumn}>
-          <input
-            className="admin-settings__input"
-            placeholder="New feature column…"
-            value={newColumnLabel}
-            onChange={(e) => setNewColumnLabel(e.target.value)}
-          />
-          <button
-            type="submit"
-            className="admin-settings__btn admin-settings__btn--secondary admin-settings__btn--inline"
-            disabled={busyKey === 'add-col' || !newColumnLabel.trim()}
-          >
-            {busyKey === 'add-col' ? <Loader size={16} className="spinning" /> : <Plus size={16} />}
-            Add column
-          </button>
-        </form>
+      <div className="testlog-meta-bar">
+        {stats.rows} sessions · {stats.cols} checks · {stats.pass} pass · {stats.fail} fail
       </div>
 
       {loading ? (
         <div className="admin-settings__hint">Loading testing log…</div>
       ) : columns.length === 0 ? (
         <div className="admin-settings__hint">
-          No columns yet. Add a feature column above (defaults will seed automatically).
+          No columns yet. Defaults will appear shortly, or add a column above.
         </div>
       ) : (
         <div className="testlog-table-wrap">
@@ -357,14 +365,15 @@ export default function AppTestingChecklist() {
                     )}
                   </th>
                 ))}
-                <th>Notes / actions</th>
+                <th>Notes</th>
               </tr>
             </thead>
             <tbody>
               {sessions.length === 0 ? (
                 <tr>
                   <td colSpan={columns.length + 2} className="testlog-empty">
-                    No test sessions yet. Add a date row to start logging.
+                    <p>No test sessions yet.</p>
+                    <p>Use <strong>Add date row</strong> above, then mark ✓ / ✗ on each feature.</p>
                   </td>
                 </tr>
               ) : (
@@ -391,21 +400,47 @@ export default function AppTestingChecklist() {
                       {columns.map((col) => {
                         const status = session.results?.[col.id] || 'unchecked';
                         const key = `cell-${session.id}-${col.id}`;
+                        const busy = busyKey === key;
                         return (
                           <td key={col.id}>
-                            <button
-                              type="button"
-                              className={`testlog-cell testlog-cell--${status}`}
-                              onClick={() => handleCycleCell(session, col.id)}
-                              disabled={busyKey === key}
-                              title="Click to cycle status"
-                            >
-                              {busyKey === key ? (
-                                <Loader size={12} className="spinning" />
-                              ) : (
-                                cellLabel(status)
-                              )}
-                            </button>
+                            <div className="testlog-status">
+                              <button
+                                type="button"
+                                className={`testlog-status__btn testlog-status__btn--pass ${
+                                  status === 'pass' ? 'is-active' : ''
+                                }`}
+                                onClick={() => handleSetCell(session, col.id, 'pass')}
+                                disabled={busy}
+                                title="Pass"
+                                aria-label="Pass"
+                              >
+                                ✓
+                              </button>
+                              <button
+                                type="button"
+                                className={`testlog-status__btn testlog-status__btn--fail ${
+                                  status === 'fail' ? 'is-active' : ''
+                                }`}
+                                onClick={() => handleSetCell(session, col.id, 'fail')}
+                                disabled={busy}
+                                title="Fail"
+                                aria-label="Fail"
+                              >
+                                ✗
+                              </button>
+                              <button
+                                type="button"
+                                className={`testlog-status__btn testlog-status__btn--na ${
+                                  status === 'na' ? 'is-active' : ''
+                                }`}
+                                onClick={() => handleSetCell(session, col.id, 'na')}
+                                disabled={busy}
+                                title="N/A"
+                                aria-label="N/A"
+                              >
+                                —
+                              </button>
+                            </div>
                           </td>
                         );
                       })}
@@ -422,7 +457,7 @@ export default function AppTestingChecklist() {
                             <div className="testlog-session-edit__actions">
                               <button
                                 type="button"
-                                className="admin-settings__btn admin-settings__btn--primary admin-settings__btn--inline"
+                                className="admin-settings__btn admin-settings__btn--primary"
                                 onClick={() => handleSaveSession(session.id)}
                                 disabled={busyKey === `session-${session.id}`}
                               >
@@ -431,7 +466,7 @@ export default function AppTestingChecklist() {
                               </button>
                               <button
                                 type="button"
-                                className="admin-settings__btn admin-settings__btn--secondary admin-settings__btn--inline"
+                                className="admin-settings__btn admin-settings__btn--secondary"
                                 onClick={() => setEditingSessionId('')}
                               >
                                 <X size={14} />
@@ -479,11 +514,6 @@ export default function AppTestingChecklist() {
           </table>
         </div>
       )}
-
-      <p className="admin-settings__hint" style={{ marginTop: 12 }}>
-        <CheckSquare size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-        Tip: green row = all pass/N/A · red row = any fail · click cells to update.
-      </p>
     </div>
   );
 }
