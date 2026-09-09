@@ -220,7 +220,7 @@ export default function AppTestingChecklist() {
             App testing log
           </h2>
           <p className="admin-settings__hint admin-settings__hint--tight">
-            Add a date row, then use the <strong>checkbox</strong> under each feature to mark it done.
+            Add a date row, then tick the checkbox under each feature when it passes.
           </p>
         </div>
         <div className="testlog-legend">
@@ -228,13 +228,7 @@ export default function AppTestingChecklist() {
             <span className="testlog-chip__box testlog-chip__box--pass" aria-hidden>
               <Check size={12} strokeWidth={3} />
             </span>
-            Done / Pass
-          </span>
-          <span className="testlog-chip testlog-chip--fail">
-            <span className="testlog-chip__box testlog-chip__box--fail" aria-hidden>
-              ✗
-            </span>
-            Fail
+            Pass
           </span>
           <span className="testlog-chip">
             <span className="testlog-chip__box" aria-hidden />
@@ -305,7 +299,7 @@ export default function AppTestingChecklist() {
       </div>
 
       <div className="testlog-meta-bar">
-        {stats.rows} sessions · {stats.cols} checks · {stats.pass} pass · {stats.fail} fail
+        {stats.rows} sessions · {stats.cols} checks · {stats.pass} passed
       </div>
 
       {loading ? (
@@ -434,7 +428,6 @@ export default function AppTestingChecklist() {
                         const key = `cell-${session.id}-${col.id}`;
                         const busy = busyKey === key;
                         const isPass = status === 'pass';
-                        const isFail = status === 'fail';
                         return (
                           <td key={col.id}>
                             <div className="testlog-check">
@@ -442,29 +435,20 @@ export default function AppTestingChecklist() {
                                 type="button"
                                 role="checkbox"
                                 aria-checked={isPass}
-                                className={`testlog-checkbox ${
-                                  isPass ? 'is-checked' : ''
-                                } ${isFail ? 'is-fail' : ''}`}
+                                className={`testlog-checkbox ${isPass ? 'is-checked' : ''}`}
                                 onClick={() => handleSetCell(session, col.id, 'pass')}
                                 disabled={busy}
                                 title={
                                   isPass
-                                    ? 'Checked = done. Click again to uncheck.'
-                                    : 'Mark as done / pass'
+                                    ? 'Passed — click to clear'
+                                    : 'Mark as pass'
                                 }
                               >
                                 {isPass ? <Check size={18} strokeWidth={3} /> : null}
-                                {isFail ? <X size={16} strokeWidth={3} /> : null}
                               </button>
-                              <button
-                                type="button"
-                                className={`testlog-fail-link ${isFail ? 'is-active' : ''}`}
-                                onClick={() => handleSetCell(session, col.id, 'fail')}
-                                disabled={busy}
-                                title="Mark as fail"
-                              >
-                                Fail
-                              </button>
+                              <span className={`testlog-pass-label ${isPass ? 'is-active' : ''}`}>
+                                {isPass ? 'Pass' : 'Pass?'}
+                              </span>
                             </div>
                           </td>
                         );

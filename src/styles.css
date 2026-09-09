@@ -1306,37 +1306,20 @@ body {
   color: #fff;
 }
 
-.testlog-checkbox.is-fail {
-  background: #ef4444;
-  border-color: #dc2626;
-  color: #fff;
-}
-
 .testlog-checkbox:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 
-.testlog-fail-link {
-  border: none;
-  background: transparent;
-  color: #9ca3af;
+.testlog-pass-label {
   font-size: 0.65rem;
   font-weight: 700;
-  cursor: pointer;
-  padding: 0;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  color: #9ca3af;
+  line-height: 1;
 }
 
-.testlog-fail-link:hover:not(:disabled),
-.testlog-fail-link.is-active {
-  color: #dc2626;
-}
-
-.testlog-fail-link:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+.testlog-pass-label.is-active {
+  color: #16a34a;
 }
 
 .testlog-chip__box {
