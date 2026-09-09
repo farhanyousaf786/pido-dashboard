@@ -1,8 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { Save, Settings as SettingsIcon, ChevronDown, Plus, Trash2 } from 'lucide-react';
+import {
+  Save,
+  Settings as SettingsIcon,
+  ChevronDown,
+  Plus,
+  Trash2,
+  CheckSquare,
+} from 'lucide-react';
 import { getAppSettings, saveAppSettings } from '../../core/services/appSettingsService.js';
+import AppTestingChecklist from './AppTestingChecklist.jsx';
 
 function Settings() {
+  const [tab, setTab] = useState('core'); // core | testing
   const [values, setValues] = useState({
     autoCancelTimeInMin: '',
     distanceTravelFee: [],
@@ -34,7 +43,9 @@ function Settings() {
         if (mounted) setLoading(false);
       }
     })();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const handleChange = (e) => {
@@ -78,11 +89,8 @@ function Settings() {
   const toggleTier = (index) => {
     setExpandedTiers((prev) => {
       const next = new Set(prev);
-      if (next.has(index)) {
-        next.delete(index);
-      } else {
-        next.add(index);
-      }
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
       return next;
     });
   };
@@ -105,165 +113,263 @@ function Settings() {
   return (
     <section className="page-shell admin-settings">
       <h1 className="page-shell__title">App Settings</h1>
-      <p className="page-shell__subtitle">Manage global app configuration.</p>
+      <p className="page-shell__subtitle">
+        Core app config (miles, fees) and internal app testing checklists.
+      </p>
 
-      {(error || message) && (
-        <div className={`admin-settings__banner ${error ? 'admin-settings__banner--error' : 'admin-settings__banner--ok'}`}>
+      <div className="admin-settings__tabs" role="tablist" aria-label="App settings sections">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'core'}
+          className={`admin-settings__tab ${tab === 'core' ? 'is-active' : ''}`}
+          onClick={() => setTab('core')}
+        >
+          <SettingsIcon size={16} />
+          Core (miles & fees)
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'testing'}
+          className={`admin-settings__tab ${tab === 'testing' ? 'is-active' : ''}`}
+          onClick={() => setTab('testing')}
+        >
+          <CheckSquare size={16} />
+          App testing checklist
+        </button>
+      </div>
+
+      {tab === 'core' && (error || message) && (
+        <div
+          className={`admin-settings__banner ${
+            error ? 'admin-settings__banner--error' : 'admin-settings__banner--ok'
+          }`}
+        >
           {error || message}
         </div>
       )}
 
-      <div className="admin-settings__grid">
-        <div className="admin-settings__card admin-settings__card--profile">
-          <h2 className="admin-settings__card-title">
-            <SettingsIcon size={18} />
-            Core Settings
-          </h2>
+      {tab === 'testing' ? (
+        <div className="admin-settings__grid admin-settings__grid--single">
+          <AppTestingChecklist />
+        </div>
+      ) : (
+        <div className="admin-settings__grid">
+          <div className="admin-settings__card admin-settings__card--profile">
+            <h2 className="admin-settings__card-title">
+              <SettingsIcon size={18} />
+              Core Settings
+            </h2>
 
-          {loading ? (
-            <div className="admin-settings__hint">Loading…</div>
-          ) : (
-            <form className="admin-settings__form" onSubmit={handleSave}>
-              <label className="admin-settings__label">
-                <span>Auto cancel time (minutes)</span>
-                <input
-                  type="number"
-                  className="admin-settings__input"
-                  name="autoCancelTimeInMin"
-                  value={values.autoCancelTimeInMin}
-                  onChange={handleChange}
-                  min={0}
+            {loading ? (
+              <div className="admin-settings__hint">Loading…</div>
+            ) : (
+              <form className="admin-settings__form" onSubmit={handleSave}>
+                <label className="admin-settings__label">
+                  <span>Auto cancel time (minutes)</span>
+                  <input
+                    type="number"
+                    className="admin-settings__input"
+                    name="autoCancelTimeInMin"
+                    value={values.autoCancelTimeInMin}
+                    onChange={handleChange}
+                    min={0}
+                  />
+                </label>
+
+                <label className="admin-settings__label">
+                  <span>Provider distance (miles)</span>
+                  <input
+                    type="number"
+                    className="admin-settings__input"
+                    name="providerDistanceInMiles"
+                    value={values.providerDistanceInMiles}
+                    onChange={handleChange}
+                    min={0}
+                  />
+                </label>
+
+                <div
+                  className="admin-settings__divider"
+                  style={{ margin: '20px 0', borderTop: '1px solid var(--border-color)' }}
                 />
-              </label>
 
-              <label className="admin-settings__label">
-                <span>Provider distance (miles)</span>
-                <input
-                  type="number"
-                  className="admin-settings__input"
-                  name="providerDistanceInMiles"
-                  value={values.providerDistanceInMiles}
-                  onChange={handleChange}
-                  min={0}
-                />
-              </label>
-
-              <div className="admin-settings__divider" style={{ margin: '20px 0', borderTop: '1px solid var(--border-color)' }} />
-
-              <div style={{ marginBottom: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>Distance Travel Fee Tiers</h3>
-                  <button
-                    type="button"
-                    onClick={handleAddTier}
+                <div style={{ marginBottom: '16px' }}>
+                  <div
                     style={{
                       display: 'flex',
+                      justifyContent: 'space-between',
                       alignItems: 'center',
-                      gap: '6px',
-                      padding: '6px 12px',
-                      fontSize: '13px',
-                      backgroundColor: 'var(--primary-color)',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <Plus size={14} />
-                    Add Tier
-                  </button>
-                </div>
-
-                {values.distanceTravelFee.map((tier, index) => (
-                  <div
-                    key={index}
-                    style={{
                       marginBottom: '12px',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '4px',
-                      overflow: 'hidden',
                     }}
                   >
-                    <button
-                      type="button"
-                      onClick={() => toggleTier(index)}
+                    <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>
+                      Distance Travel Fee Tiers
+                    </h3>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        type="button"
+                        onClick={handleAddTier}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 12px',
+                          fontSize: '13px',
+                          backgroundColor: 'var(--color-primary)',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <Plus size={14} />
+                        Add Tier
+                      </button>
+                    </div>
+                  </div>
+
+                  {values.distanceTravelFee.map((tier, index) => (
+                    <div
+                      key={index}
                       style={{
-                        width: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '12px',
-                        backgroundColor: 'var(--surface-color)',
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontSize: '13px',
-                        fontWeight: 500,
+                        marginBottom: '12px',
+                        border: '1px solid var(--color-light-gray)',
+                        borderRadius: '4px',
+                        overflow: 'hidden',
                       }}
                     >
-                      <span>
-                        Tier {index}
-                        {tier.distanceInMiles && ` • ${tier.distanceInMiles} mi`}
-                      </span>
-                      <ChevronDown
-                        size={16}
+                      <button
+                        type="button"
+                        onClick={() => toggleTier(index)}
                         style={{
-                          transform: expandedTiers.has(index) ? 'rotate(180deg)' : 'rotate(0deg)',
-                          transition: 'transform 0.2s',
+                          width: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '12px',
+                          backgroundColor: 'var(--color-lightest-grey)',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontSize: '13px',
+                          fontWeight: 500,
                         }}
-                      />
-                    </button>
+                      >
+                        <span>
+                          Tier {index}
+                          {tier.distanceInMiles && ` • ${tier.distanceInMiles} mi`}
+                          {tier.travelFee !== '' &&
+                            tier.travelFee !== undefined &&
+                            ` • $${tier.travelFee}`}
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveTier(index);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.stopPropagation();
+                                handleRemoveTier(index);
+                              }
+                            }}
+                            title="Remove tier"
+                            style={{ display: 'inline-flex', color: '#b91c1c' }}
+                          >
+                            <Trash2 size={14} />
+                          </span>
+                          <ChevronDown
+                            size={16}
+                            style={{
+                              transform: expandedTiers.has(index)
+                                ? 'rotate(180deg)'
+                                : 'rotate(0deg)',
+                              transition: 'transform 0.2s',
+                            }}
+                          />
+                        </span>
+                      </button>
 
-                    {expandedTiers.has(index) && (
-                      <div style={{ padding: '12px', borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-                          <label className="admin-settings__label" style={{ margin: 0 }}>
-                            <span>Distance (miles)</span>
-                            <input
-                              type="number"
-                              className="admin-settings__input"
-                              value={tier.distanceInMiles}
-                              onChange={(e) => handleTierChange(index, 'distanceInMiles', e.target.value)}
-                              min={0}
-                            />
-                          </label>
-                          <label className="admin-settings__label" style={{ margin: 0 }}>
-                            <span>Travel fee</span>
-                            <input
-                              type="number"
-                              className="admin-settings__input"
-                              value={tier.travelFee}
-                              onChange={(e) => handleTierChange(index, 'travelFee', e.target.value)}
-                              min={0}
-                              step="0.01"
-                            />
-                          </label>
+                      {expandedTiers.has(index) && (
+                        <div
+                          style={{
+                            padding: '12px',
+                            borderTop: '1px solid var(--color-light-gray)',
+                            backgroundColor: 'var(--color-white)',
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: '1fr 1fr',
+                              gap: '12px',
+                              marginBottom: '12px',
+                            }}
+                          >
+                            <label className="admin-settings__label" style={{ margin: 0 }}>
+                              <span>Distance (miles)</span>
+                              <input
+                                type="number"
+                                className="admin-settings__input"
+                                value={tier.distanceInMiles}
+                                onChange={(e) =>
+                                  handleTierChange(index, 'distanceInMiles', e.target.value)
+                                }
+                                min={0}
+                              />
+                            </label>
+                            <label className="admin-settings__label" style={{ margin: 0 }}>
+                              <span>Travel fee</span>
+                              <input
+                                type="number"
+                                className="admin-settings__input"
+                                value={tier.travelFee}
+                                onChange={(e) =>
+                                  handleTierChange(index, 'travelFee', e.target.value)
+                                }
+                                min={0}
+                                step="0.01"
+                              />
+                            </label>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                      )}
+                    </div>
+                  ))}
 
-                {values.distanceTravelFee.length === 0 && (
-                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', textAlign: 'center', padding: '16px' }}>
-                    No tiers added yet. Click "Add Tier" to create one.
-                  </p>
-                )}
-              </div>
+                  {values.distanceTravelFee.length === 0 && (
+                    <p
+                      style={{
+                        fontSize: '13px',
+                        color: 'var(--color-dark-grey)',
+                        textAlign: 'center',
+                        padding: '16px',
+                      }}
+                    >
+                      No tiers added yet. Click &quot;Add Tier&quot; to create one.
+                    </p>
+                  )}
+                </div>
 
-              <div className="admin-settings__password-actions">
-                <button
-                  type="submit"
-                  className="admin-settings__btn admin-settings__btn--primary admin-settings__btn--inline"
-                  disabled={saving}
-                >
-                  <Save size={16} />
-                  {saving ? 'Saving…' : 'Save'}
-                </button>
-              </div>
-            </form>
-          )}
+                <div className="admin-settings__password-actions">
+                  <button
+                    type="submit"
+                    className="admin-settings__btn admin-settings__btn--primary admin-settings__btn--inline"
+                    disabled={saving}
+                  >
+                    <Save size={16} />
+                    {saving ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </section>
   );
 }
