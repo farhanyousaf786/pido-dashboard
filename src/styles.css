@@ -1063,6 +1063,263 @@ body {
   max-width: none;
 }
 
+.testlog-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 14px;
+}
+
+.testlog-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border: 1px solid var(--color-light-gray);
+  background: var(--color-white);
+  color: var(--color-dark-grey);
+}
+
+.testlog-chip--pass {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.testlog-chip--fail {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+
+.testlog-chip--na {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  color: #4b5563;
+}
+
+.testlog-meta {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--color-light-grey);
+  font-weight: 600;
+}
+
+.testlog-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.testlog-toolbar__form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.testlog-toolbar__form .admin-settings__input {
+  min-width: 160px;
+  flex: 1;
+}
+
+.testlog-table-wrap {
+  overflow: auto;
+  border: 1px solid var(--color-light-gray);
+  border-radius: 12px;
+  max-height: min(70vh, 720px);
+  background: var(--color-white);
+}
+
+.testlog-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: max-content;
+  min-width: 100%;
+  font-size: 0.8125rem;
+}
+
+.testlog-table th,
+.testlog-table td {
+  border-bottom: 1px solid var(--color-light-gray);
+  border-right: 1px solid var(--color-lightest-grey);
+  padding: 10px;
+  vertical-align: middle;
+  text-align: center;
+}
+
+.testlog-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #fafafa;
+  font-weight: 700;
+  color: var(--color-dim-black);
+  min-width: 110px;
+}
+
+.testlog-table__sticky {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: #fff;
+  text-align: left !important;
+  min-width: 130px;
+}
+
+.testlog-table thead .testlog-table__sticky {
+  z-index: 4;
+  background: #fafafa;
+}
+
+.testlog-col-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+
+.testlog-col-head > span:first-child {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.testlog-col-head__actions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.testlog-col-edit {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.testlog-col-edit .admin-settings__input {
+  min-width: 90px;
+  padding: 6px 8px;
+  font-size: 0.75rem;
+}
+
+.testlog-row--pass {
+  background: #f0fdf4;
+}
+
+.testlog-row--fail {
+  background: #fef2f2;
+}
+
+.testlog-row--partial {
+  background: #fffbeb;
+}
+
+.testlog-row--pass .testlog-table__sticky,
+.testlog-row--fail .testlog-table__sticky,
+.testlog-row--partial .testlog-table__sticky {
+  background: inherit;
+}
+
+.testlog-cell {
+  width: 44px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--color-light-gray);
+  background: #fff;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.testlog-cell--pass {
+  background: #22c55e;
+  border-color: #16a34a;
+  color: #fff;
+}
+
+.testlog-cell--fail {
+  background: #ef4444;
+  border-color: #dc2626;
+  color: #fff;
+}
+
+.testlog-cell--na {
+  background: #e5e7eb;
+  border-color: #9ca3af;
+  color: #374151;
+  font-size: 0.65rem;
+}
+
+.testlog-cell--unchecked:hover {
+  border-color: var(--color-primary);
+}
+
+.testlog-date {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.testlog-date small {
+  color: var(--color-light-grey);
+  font-size: 0.68rem;
+  font-weight: 500;
+}
+
+.testlog-session-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  min-width: 160px;
+}
+
+.testlog-session-notes {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--color-dark-grey);
+  white-space: pre-wrap;
+}
+
+.testlog-session-notes.is-muted {
+  color: var(--color-light-grey);
+}
+
+.testlog-session-side__actions {
+  display: flex;
+  gap: 4px;
+}
+
+.testlog-session-edit {
+  display: grid;
+  gap: 6px;
+  text-align: left;
+  min-width: 180px;
+}
+
+.testlog-session-edit__actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.testlog-empty {
+  text-align: center !important;
+  color: var(--color-light-grey);
+  padding: 28px 12px !important;
+}
+
 .checklist-progress {
   margin: 12px 0 16px;
 }

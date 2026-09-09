@@ -8,10 +8,14 @@ import {
   query,
   serverTimestamp,
   updateDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig.js';
 
-const checklistCol = collection(db, 'appTestingChecklist');
+const columnsCol = collection(db, 'appTestingColumns');
+const sessionsCol = collection(db, 'appTestingSessions');
+
+export const CELL_STATUSES = ['unchecked', 'pass', 'fail', 'na'];
 
 function toIso(value) {
   if (!value) return null;
@@ -27,91 +31,190 @@ function toIso(value) {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-function mapItem(snap) {
+function normalizeStatus(value) {
+  const s = String(value || 'unchecked').toLowerCase();
+  if (s === 'pass' || s === 'fail' || s === 'na' || s === 'unchecked') return s;
+  if (s === 'true' || s === 'checked' || s === 'ok') return 'pass';
+  if (s === 'false') return 'fail';
+  return 'unchecked';
+}
+
+function mapColumn(snap) {
   const d = snap.data() || {};
   return {
     id: snap.id,
-    title: String(d.title || '').trim(),
-    notes: String(d.notes || '').trim(),
-    done: d.done === true,
-    dueAt: toIso(d.dueAt) || (d.dueAtDate ? `${d.dueAtDate}T12:00:00.000Z` : null),
-    dueAtDate: d.dueAtDate || (toIso(d.dueAt) ? toIso(d.dueAt).slice(0, 10) : ''),
+    label: String(d.label || '').trim() || 'Untitled',
+    sortOrder: Number.isFinite(Number(d.sortOrder)) ? Number(d.sortOrder) : Date.now(),
     createdAt: toIso(d.createdAt),
     updatedAt: toIso(d.updatedAt),
-    completedAt: toIso(d.completedAt),
-    createdBy: d.createdBy || null,
-    updatedBy: d.updatedBy || null,
-    sortOrder: Number.isFinite(Number(d.sortOrder)) ? Number(d.sortOrder) : 0,
   };
 }
 
-export function subscribeAppTestingChecklist(onChange, onError) {
-  const q = query(checklistCol, orderBy('createdAt', 'desc'));
+function mapSession(snap) {
+  const d = snap.data() || {};
+  const resultsRaw = d.results && typeof d.results === 'object' ? d.results : {};
+  const results = {};
+  for (const [key, val] of Object.entries(resultsRaw)) {
+    results[key] = normalizeStatus(val);
+  }
+  return {
+    id: snap.id,
+    date: d.date || (toIso(d.createdAt) || '').slice(0, 10) || '',
+    notes: String(d.notes || '').trim(),
+    results,
+    createdAt: toIso(d.createdAt),
+    updatedAt: toIso(d.updatedAt),
+    createdBy: d.createdBy || null,
+    updatedBy: d.updatedBy || null,
+  };
+}
+
+export function subscribeTestingColumns(onChange, onError) {
+  const q = query(columnsCol, orderBy('sortOrder', 'asc'));
   return onSnapshot(
     q,
-    (snap) => {
-      const items = snap.docs.map(mapItem);
-      onChange(items);
-    },
-    (err) => {
-      if (onError) onError(err);
-    }
+    (snap) => onChange(snap.docs.map(mapColumn)),
+    (err) => onError?.(err)
   );
 }
 
-export async function addChecklistItem({ title, notes = '', dueAtDate = '', actorUid = null }) {
-  const cleanTitle = String(title || '').trim();
-  if (!cleanTitle) throw new Error('Title is required');
+export function subscribeTestingSessions(onChange, onError) {
+  const q = query(sessionsCol, orderBy('date', 'desc'));
+  return onSnapshot(
+    q,
+    (snap) => onChange(snap.docs.map(mapSession)),
+    (err) => onError?.(err)
+  );
+}
 
-  const payload = {
-    title: cleanTitle,
-    notes: String(notes || '').trim(),
-    done: false,
-    dueAtDate: dueAtDate || null,
-    dueAt: dueAtDate ? new Date(`${dueAtDate}T12:00:00`) : null,
+export async function addTestingColumn({ label, actorUid = null }) {
+  const clean = String(label || '').trim();
+  if (!clean) throw new Error('Column name is required');
+  const ref = await addDoc(columnsCol, {
+    label: clean,
+    sortOrder: Date.now(),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
-    completedAt: null,
     createdBy: actorUid,
     updatedBy: actorUid,
-    sortOrder: Date.now(),
-  };
-
-  const ref = await addDoc(checklistCol, payload);
+  });
   return ref.id;
 }
 
-export async function updateChecklistItem(id, patch, actorUid = null) {
-  if (!id) throw new Error('Item id is required');
+export async function updateTestingColumn(id, { label }, actorUid = null) {
+  const clean = String(label || '').trim();
+  if (!id) throw new Error('Column id is required');
+  if (!clean) throw new Error('Column name is required');
+  await updateDoc(doc(db, 'appTestingColumns', id), {
+    label: clean,
+    updatedAt: serverTimestamp(),
+    updatedBy: actorUid,
+  });
+}
+
+export async function deleteTestingColumn(id) {
+  if (!id) throw new Error('Column id is required');
+  // Remove column doc; session result keys for this column are left orphaned (ignored in UI).
+  await deleteDoc(doc(db, 'appTestingColumns', id));
+}
+
+export async function addTestingSession({ date, notes = '', actorUid = null, columnIds = [] }) {
+  const day = String(date || '').trim();
+  if (!day) throw new Error('Date is required');
+  const results = {};
+  for (const colId of columnIds) {
+    results[colId] = 'unchecked';
+  }
+  const ref = await addDoc(sessionsCol, {
+    date: day,
+    notes: String(notes || '').trim(),
+    results,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    createdBy: actorUid,
+    updatedBy: actorUid,
+  });
+  return ref.id;
+}
+
+export async function updateTestingSession(id, patch, actorUid = null) {
+  if (!id) throw new Error('Session id is required');
   const next = {
     updatedAt: serverTimestamp(),
     updatedBy: actorUid,
   };
-
-  if (patch.title !== undefined) {
-    const cleanTitle = String(patch.title || '').trim();
-    if (!cleanTitle) throw new Error('Title is required');
-    next.title = cleanTitle;
+  if (patch.date !== undefined) {
+    const day = String(patch.date || '').trim();
+    if (!day) throw new Error('Date is required');
+    next.date = day;
   }
   if (patch.notes !== undefined) next.notes = String(patch.notes || '').trim();
-  if (patch.dueAtDate !== undefined) {
-    const dueAtDate = patch.dueAtDate || null;
-    next.dueAtDate = dueAtDate;
-    next.dueAt = dueAtDate ? new Date(`${dueAtDate}T12:00:00`) : null;
+  if (patch.results !== undefined && typeof patch.results === 'object') {
+    const cleaned = {};
+    for (const [key, val] of Object.entries(patch.results)) {
+      cleaned[key] = normalizeStatus(val);
+    }
+    next.results = cleaned;
   }
-  if (patch.done !== undefined) {
-    next.done = patch.done === true;
-    next.completedAt = patch.done === true ? serverTimestamp() : null;
-  }
-
-  await updateDoc(doc(db, 'appTestingChecklist', id), next);
+  await updateDoc(doc(db, 'appTestingSessions', id), next);
 }
 
-export async function toggleChecklistItem(id, done, actorUid = null) {
-  return updateChecklistItem(id, { done }, actorUid);
+export async function setSessionCellStatus(sessionId, columnId, status, actorUid = null) {
+  if (!sessionId || !columnId) throw new Error('Session and column are required');
+  const clean = normalizeStatus(status);
+  await updateDoc(doc(db, 'appTestingSessions', sessionId), {
+    [`results.${columnId}`]: clean,
+    updatedAt: serverTimestamp(),
+    updatedBy: actorUid,
+  });
 }
 
-export async function deleteChecklistItem(id) {
-  if (!id) throw new Error('Item id is required');
-  await deleteDoc(doc(db, 'appTestingChecklist', id));
+export async function deleteTestingSession(id) {
+  if (!id) throw new Error('Session id is required');
+  await deleteDoc(doc(db, 'appTestingSessions', id));
+}
+
+export function nextCellStatus(current) {
+  const idx = CELL_STATUSES.indexOf(normalizeStatus(current));
+  return CELL_STATUSES[(idx + 1) % CELL_STATUSES.length];
+}
+
+export function sessionRowTone(session, columns) {
+  const statuses = columns.map((c) => normalizeStatus(session.results?.[c.id]));
+  if (statuses.some((s) => s === 'fail')) return 'fail';
+  if (statuses.length > 0 && statuses.every((s) => s === 'pass' || s === 'na')) return 'pass';
+  if (statuses.some((s) => s === 'pass')) return 'partial';
+  return 'neutral';
+}
+
+/** Seed default columns once if none exist. */
+export async function ensureDefaultTestingColumns(actorUid = null) {
+  const defaults = [
+    'Booking flow',
+    'Live Tracking',
+    'Notifications',
+    'Booking widget',
+    'Sign in',
+    'Sign up',
+    'Payment Method',
+    'App Version +1',
+    'Payment Flow',
+    'Chat Flag test',
+    'Version check',
+  ];
+  // Caller should only invoke when columns.length === 0
+  const batch = writeBatch(db);
+  const now = Date.now();
+  defaults.forEach((label, i) => {
+    const ref = doc(columnsCol);
+    batch.set(ref, {
+      label,
+      sortOrder: now + i,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      createdBy: actorUid,
+      updatedBy: actorUid,
+    });
+  });
+  await batch.commit();
 }

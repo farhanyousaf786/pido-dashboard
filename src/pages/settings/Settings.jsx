@@ -114,7 +114,7 @@ function Settings() {
     <section className="page-shell admin-settings">
       <h1 className="page-shell__title">App Settings</h1>
       <p className="page-shell__subtitle">
-        Core app config (miles, fees) and internal app testing checklists.
+        Core app config (miles, fees) and a spreadsheet-style app testing log.
       </p>
 
       <div className="admin-settings__tabs" role="tablist" aria-label="App settings sections">

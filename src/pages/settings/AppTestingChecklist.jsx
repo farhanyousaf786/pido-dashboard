@@ -7,16 +7,31 @@ import {
   X,
   Save,
   Loader,
-  Filter,
+  Table2,
 } from 'lucide-react';
 import { useAuth } from '../../core/auth/AuthContext';
 import {
-  addChecklistItem,
-  deleteChecklistItem,
-  subscribeAppTestingChecklist,
-  updateChecklistItem,
-  toggleChecklistItem,
+  addTestingColumn,
+  addTestingSession,
+  deleteTestingColumn,
+  deleteTestingSession,
+  ensureDefaultTestingColumns,
+  nextCellStatus,
+  sessionRowTone,
+  setSessionCellStatus,
+  subscribeTestingColumns,
+  subscribeTestingSessions,
+  updateTestingColumn,
+  updateTestingSession,
 } from '../../core/services/appTestingChecklistService.js';
+
+function todayIsoDate() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
 
 function formatWhen(iso) {
   if (!iso) return '—';
@@ -27,338 +42,448 @@ function formatWhen(iso) {
   }
 }
 
-function emptyDraft() {
-  return { title: '', notes: '', dueAtDate: '' };
+function cellLabel(status) {
+  if (status === 'pass') return '✓';
+  if (status === 'fail') return '✗';
+  if (status === 'na') return 'N/A';
+  return '';
 }
 
 export default function AppTestingChecklist() {
   const { user } = useAuth();
   const actorUid = user?.uid || null;
 
-  const [items, setItems] = useState([]);
+  const [columns, setColumns] = useState([]);
+  const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [filter, setFilter] = useState('all'); // all | open | done
-  const [draft, setDraft] = useState(emptyDraft());
-  const [adding, setAdding] = useState(false);
-  const [editingId, setEditingId] = useState('');
-  const [editDraft, setEditDraft] = useState(emptyDraft());
-  const [busyId, setBusyId] = useState('');
+  const [busyKey, setBusyKey] = useState('');
+  const [seeded, setSeeded] = useState(false);
+
+  const [newColumnLabel, setNewColumnLabel] = useState('');
+  const [editingColumnId, setEditingColumnId] = useState('');
+  const [editingColumnLabel, setEditingColumnLabel] = useState('');
+
+  const [newSessionDate, setNewSessionDate] = useState(todayIsoDate());
+  const [newSessionNotes, setNewSessionNotes] = useState('');
+  const [editingSessionId, setEditingSessionId] = useState('');
+  const [editingSessionDate, setEditingSessionDate] = useState('');
+  const [editingSessionNotes, setEditingSessionNotes] = useState('');
 
   useEffect(() => {
     setLoading(true);
-    const unsub = subscribeAppTestingChecklist(
+    let colsReady = false;
+    let sessionsReady = false;
+    const done = () => {
+      if (colsReady && sessionsReady) setLoading(false);
+    };
+
+    const unsubCols = subscribeTestingColumns(
       (rows) => {
-        setItems(rows);
-        setLoading(false);
+        setColumns(rows);
+        colsReady = true;
+        done();
         setError('');
       },
       (err) => {
-        setLoading(false);
-        setError(err?.message || 'Failed to load checklist');
+        colsReady = true;
+        done();
+        setError(err?.message || 'Failed to load columns');
       }
     );
-    return () => unsub();
+
+    const unsubSessions = subscribeTestingSessions(
+      (rows) => {
+        setSessions(rows);
+        sessionsReady = true;
+        done();
+        setError('');
+      },
+      (err) => {
+        sessionsReady = true;
+        done();
+        setError(err?.message || 'Failed to load sessions');
+      }
+    );
+
+    return () => {
+      unsubCols();
+      unsubSessions();
+    };
   }, []);
 
+  useEffect(() => {
+    if (loading || seeded || columns.length > 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await ensureDefaultTestingColumns(actorUid);
+        if (!cancelled) setSeeded(true);
+      } catch (err) {
+        if (!cancelled) setError(err?.message || 'Failed to seed default columns');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, columns.length, seeded, actorUid]);
+
   const stats = useMemo(() => {
-    const total = items.length;
-    const done = items.filter((i) => i.done).length;
-    return { total, done, open: total - done };
-  }, [items]);
+    let pass = 0;
+    let fail = 0;
+    let na = 0;
+    let unchecked = 0;
+    for (const session of sessions) {
+      for (const col of columns) {
+        const s = session.results?.[col.id] || 'unchecked';
+        if (s === 'pass') pass += 1;
+        else if (s === 'fail') fail += 1;
+        else if (s === 'na') na += 1;
+        else unchecked += 1;
+      }
+    }
+    return { pass, fail, na, unchecked, rows: sessions.length, cols: columns.length };
+  }, [sessions, columns]);
 
-  const visibleItems = useMemo(() => {
-    let rows = [...items];
-    if (filter === 'open') rows = rows.filter((i) => !i.done);
-    if (filter === 'done') rows = rows.filter((i) => i.done);
-    rows.sort((a, b) => {
-      if (a.done !== b.done) return a.done ? 1 : -1;
-      const ad = a.dueAtDate || '';
-      const bd = b.dueAtDate || '';
-      if (ad && bd && ad !== bd) return ad.localeCompare(bd);
-      if (ad && !bd) return -1;
-      if (!ad && bd) return 1;
-      return (b.createdAt || '').localeCompare(a.createdAt || '');
-    });
-    return rows;
-  }, [items, filter]);
-
-  const handleAdd = async (e) => {
-    e.preventDefault();
-    if (!draft.title.trim() || adding) return;
-    setAdding(true);
+  const run = async (key, fn) => {
+    setBusyKey(key);
     setError('');
     try {
-      await addChecklistItem({
-        title: draft.title,
-        notes: draft.notes,
-        dueAtDate: draft.dueAtDate,
-        actorUid,
-      });
-      setDraft(emptyDraft());
+      await fn();
     } catch (err) {
-      setError(err?.message || 'Failed to add item');
+      setError(err?.message || 'Something went wrong');
     } finally {
-      setAdding(false);
+      setBusyKey('');
     }
   };
 
-  const startEdit = (item) => {
-    setEditingId(item.id);
-    setEditDraft({
-      title: item.title || '',
-      notes: item.notes || '',
-      dueAtDate: item.dueAtDate || '',
+  const handleAddColumn = (e) => {
+    e.preventDefault();
+    if (!newColumnLabel.trim()) return;
+    run('add-col', async () => {
+      await addTestingColumn({ label: newColumnLabel, actorUid });
+      setNewColumnLabel('');
     });
   };
 
-  const cancelEdit = () => {
-    setEditingId('');
-    setEditDraft(emptyDraft());
+  const handleSaveColumn = (id) => {
+    run(`col-${id}`, async () => {
+      await updateTestingColumn(id, { label: editingColumnLabel }, actorUid);
+      setEditingColumnId('');
+      setEditingColumnLabel('');
+    });
   };
 
-  const saveEdit = async (id) => {
-    if (!id || busyId) return;
-    setBusyId(id);
-    setError('');
-    try {
-      await updateChecklistItem(
+  const handleDeleteColumn = (id, label) => {
+    const ok = window.confirm(`Remove column “${label}”? Existing cell values for it will be hidden.`);
+    if (!ok) return;
+    run(`col-${id}`, () => deleteTestingColumn(id));
+  };
+
+  const handleAddSession = (e) => {
+    e.preventDefault();
+    run('add-session', async () => {
+      await addTestingSession({
+        date: newSessionDate,
+        notes: newSessionNotes,
+        actorUid,
+        columnIds: columns.map((c) => c.id),
+      });
+      setNewSessionNotes('');
+      setNewSessionDate(todayIsoDate());
+    });
+  };
+
+  const handleSaveSession = (id) => {
+    run(`session-${id}`, async () => {
+      await updateTestingSession(
         id,
-        {
-          title: editDraft.title,
-          notes: editDraft.notes,
-          dueAtDate: editDraft.dueAtDate,
-        },
+        { date: editingSessionDate, notes: editingSessionNotes },
         actorUid
       );
-      cancelEdit();
-    } catch (err) {
-      setError(err?.message || 'Failed to update item');
-    } finally {
-      setBusyId('');
-    }
+      setEditingSessionId('');
+    });
   };
 
-  const onToggle = async (item) => {
-    if (busyId) return;
-    setBusyId(item.id);
-    setError('');
-    try {
-      await toggleChecklistItem(item.id, !item.done, actorUid);
-    } catch (err) {
-      setError(err?.message || 'Failed to update status');
-    } finally {
-      setBusyId('');
-    }
-  };
-
-  const onDelete = async (id) => {
-    if (!id || busyId) return;
-    const ok = window.confirm('Delete this checklist item?');
+  const handleDeleteSession = (id, date) => {
+    const ok = window.confirm(`Delete test log for ${date}?`);
     if (!ok) return;
-    setBusyId(id);
-    setError('');
-    try {
-      await deleteChecklistItem(id);
-      if (editingId === id) cancelEdit();
-    } catch (err) {
-      setError(err?.message || 'Failed to delete item');
-    } finally {
-      setBusyId('');
-    }
+    run(`session-${id}`, () => deleteTestingSession(id));
   };
 
-  const progressPct = stats.total ? Math.round((stats.done / stats.total) * 100) : 0;
+  const handleCycleCell = (session, columnId) => {
+    const current = session.results?.[columnId] || 'unchecked';
+    const next = nextCellStatus(current);
+    run(`cell-${session.id}-${columnId}`, () =>
+      setSessionCellStatus(session.id, columnId, next, actorUid)
+    );
+  };
 
   return (
     <div className="admin-settings__card admin-settings__card--checklist">
       <h2 className="admin-settings__card-title">
-        <CheckSquare size={18} />
-        App testing checklist
+        <Table2 size={18} />
+        App testing log
       </h2>
       <p className="admin-settings__hint admin-settings__hint--tight">
-        Track QA / release checks. Add as many items as you need — each keeps created and updated
-        times.
+        Spreadsheet-style QA log: rows are test dates, columns are features. Click a cell to cycle{' '}
+        <strong>empty → pass → fail → N/A</strong>. Add/edit/remove rows and columns anytime.
       </p>
 
       {error ? (
         <div className="admin-settings__banner admin-settings__banner--error">{error}</div>
       ) : null}
 
-      <div className="checklist-progress">
-        <div className="checklist-progress__meta">
-          <strong>
-            {stats.done}/{stats.total} done
-          </strong>
-          <span>{stats.open} open · {progressPct}%</span>
-        </div>
-        <div className="checklist-progress__bar" aria-hidden>
-          <div className="checklist-progress__fill" style={{ width: `${progressPct}%` }} />
-        </div>
+      <div className="testlog-legend">
+        <span className="testlog-chip testlog-chip--pass">✓ Pass</span>
+        <span className="testlog-chip testlog-chip--fail">✗ Fail</span>
+        <span className="testlog-chip testlog-chip--na">N/A</span>
+        <span className="testlog-chip">Empty</span>
+        <span className="testlog-meta">
+          {stats.rows} sessions · {stats.cols} checks · {stats.pass} pass · {stats.fail} fail
+        </span>
       </div>
 
-      <form className="checklist-add" onSubmit={handleAdd}>
-        <input
-          className="admin-settings__input"
-          placeholder="New checklist item…"
-          value={draft.title}
-          onChange={(e) => setDraft((p) => ({ ...p, title: e.target.value }))}
-        />
-        <input
-          type="date"
-          className="admin-settings__input checklist-add__date"
-          value={draft.dueAtDate}
-          onChange={(e) => setDraft((p) => ({ ...p, dueAtDate: e.target.value }))}
-          title="Due date (optional)"
-        />
-        <button
-          type="submit"
-          className="admin-settings__btn admin-settings__btn--primary admin-settings__btn--inline"
-          disabled={adding || !draft.title.trim()}
-        >
-          {adding ? <Loader size={16} className="spinning" /> : <Plus size={16} />}
-          Add
-        </button>
-        <textarea
-          className="admin-settings__input checklist-add__notes"
-          placeholder="Notes (optional)"
-          rows={2}
-          value={draft.notes}
-          onChange={(e) => setDraft((p) => ({ ...p, notes: e.target.value }))}
-        />
-      </form>
-
-      <div className="checklist-filters">
-        <Filter size={14} />
-        {[
-          { key: 'all', label: `All (${stats.total})` },
-          { key: 'open', label: `Open (${stats.open})` },
-          { key: 'done', label: `Done (${stats.done})` },
-        ].map((f) => (
+      <div className="testlog-toolbar">
+        <form className="testlog-toolbar__form" onSubmit={handleAddSession}>
+          <input
+            type="date"
+            className="admin-settings__input"
+            value={newSessionDate}
+            onChange={(e) => setNewSessionDate(e.target.value)}
+            required
+          />
+          <input
+            className="admin-settings__input"
+            placeholder="Session notes (optional)"
+            value={newSessionNotes}
+            onChange={(e) => setNewSessionNotes(e.target.value)}
+          />
           <button
-            key={f.key}
-            type="button"
-            className={`checklist-filter-btn ${filter === f.key ? 'is-active' : ''}`}
-            onClick={() => setFilter(f.key)}
+            type="submit"
+            className="admin-settings__btn admin-settings__btn--primary admin-settings__btn--inline"
+            disabled={busyKey === 'add-session' || !newSessionDate}
           >
-            {f.label}
+            {busyKey === 'add-session' ? <Loader size={16} className="spinning" /> : <Plus size={16} />}
+            Add date row
           </button>
-        ))}
+        </form>
+
+        <form className="testlog-toolbar__form" onSubmit={handleAddColumn}>
+          <input
+            className="admin-settings__input"
+            placeholder="New feature column…"
+            value={newColumnLabel}
+            onChange={(e) => setNewColumnLabel(e.target.value)}
+          />
+          <button
+            type="submit"
+            className="admin-settings__btn admin-settings__btn--secondary admin-settings__btn--inline"
+            disabled={busyKey === 'add-col' || !newColumnLabel.trim()}
+          >
+            {busyKey === 'add-col' ? <Loader size={16} className="spinning" /> : <Plus size={16} />}
+            Add column
+          </button>
+        </form>
       </div>
 
       {loading ? (
-        <div className="admin-settings__hint">Loading checklist…</div>
-      ) : visibleItems.length === 0 ? (
-        <div className="admin-settings__hint">No items in this view. Add one above.</div>
+        <div className="admin-settings__hint">Loading testing log…</div>
+      ) : columns.length === 0 ? (
+        <div className="admin-settings__hint">
+          No columns yet. Add a feature column above (defaults will seed automatically).
+        </div>
       ) : (
-        <ul className="checklist-list">
-          {visibleItems.map((item) => {
-            const isEditing = editingId === item.id;
-            const busy = busyId === item.id;
-            return (
-              <li
-                key={item.id}
-                className={`checklist-item ${item.done ? 'is-done' : ''} ${
-                  isEditing ? 'is-editing' : ''
-                }`}
-              >
-                {isEditing ? (
-                  <div className="checklist-item__edit">
-                    <input
-                      className="admin-settings__input"
-                      value={editDraft.title}
-                      onChange={(e) =>
-                        setEditDraft((p) => ({ ...p, title: e.target.value }))
-                      }
-                    />
-                    <input
-                      type="date"
-                      className="admin-settings__input"
-                      value={editDraft.dueAtDate}
-                      onChange={(e) =>
-                        setEditDraft((p) => ({ ...p, dueAtDate: e.target.value }))
-                      }
-                    />
-                    <textarea
-                      className="admin-settings__input"
-                      rows={2}
-                      value={editDraft.notes}
-                      onChange={(e) =>
-                        setEditDraft((p) => ({ ...p, notes: e.target.value }))
-                      }
-                    />
-                    <div className="checklist-item__edit-actions">
-                      <button
-                        type="button"
-                        className="admin-settings__btn admin-settings__btn--primary admin-settings__btn--inline"
-                        onClick={() => saveEdit(item.id)}
-                        disabled={busy || !editDraft.title.trim()}
-                      >
-                        {busy ? <Loader size={14} className="spinning" /> : <Save size={14} />}
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        className="admin-settings__btn admin-settings__btn--secondary admin-settings__btn--inline"
-                        onClick={cancelEdit}
-                        disabled={busy}
-                      >
-                        <X size={14} />
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <label className="checklist-item__check">
-                      <input
-                        type="checkbox"
-                        checked={item.done}
-                        disabled={busy}
-                        onChange={() => onToggle(item)}
-                      />
-                      <span className="checklist-item__title">{item.title}</span>
-                    </label>
-                    {item.notes ? (
-                      <p className="checklist-item__notes">{item.notes}</p>
-                    ) : null}
-                    <div className="checklist-item__meta">
-                      {item.dueAtDate ? <span>Due {item.dueAtDate}</span> : null}
-                      <span>Created {formatWhen(item.createdAt)}</span>
-                      <span>Updated {formatWhen(item.updatedAt)}</span>
-                      {item.done && item.completedAt ? (
-                        <span>Completed {formatWhen(item.completedAt)}</span>
-                      ) : null}
-                    </div>
-                    <div className="checklist-item__actions">
-                      <button
-                        type="button"
-                        className="checklist-icon-btn"
-                        onClick={() => startEdit(item)}
-                        disabled={busy}
-                        title="Edit"
-                        aria-label="Edit"
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        className="checklist-icon-btn checklist-icon-btn--danger"
-                        onClick={() => onDelete(item.id)}
-                        disabled={busy}
-                        title="Delete"
-                        aria-label="Delete"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+        <div className="testlog-table-wrap">
+          <table className="testlog-table">
+            <thead>
+              <tr>
+                <th className="testlog-table__sticky">Date</th>
+                {columns.map((col) => (
+                  <th key={col.id}>
+                    {editingColumnId === col.id ? (
+                      <div className="testlog-col-edit">
+                        <input
+                          className="admin-settings__input"
+                          value={editingColumnLabel}
+                          onChange={(e) => setEditingColumnLabel(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          className="checklist-icon-btn"
+                          title="Save"
+                          onClick={() => handleSaveColumn(col.id)}
+                          disabled={busyKey === `col-${col.id}`}
+                        >
+                          <Save size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          className="checklist-icon-btn"
+                          title="Cancel"
+                          onClick={() => {
+                            setEditingColumnId('');
+                            setEditingColumnLabel('');
+                          }}
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="testlog-col-head">
+                        <span title={col.label}>{col.label}</span>
+                        <span className="testlog-col-head__actions">
+                          <button
+                            type="button"
+                            className="checklist-icon-btn"
+                            title="Rename column"
+                            onClick={() => {
+                              setEditingColumnId(col.id);
+                              setEditingColumnLabel(col.label);
+                            }}
+                          >
+                            <Pencil size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            className="checklist-icon-btn checklist-icon-btn--danger"
+                            title="Delete column"
+                            onClick={() => handleDeleteColumn(col.id, col.label)}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </span>
+                      </div>
+                    )}
+                  </th>
+                ))}
+                <th>Notes / actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sessions.length === 0 ? (
+                <tr>
+                  <td colSpan={columns.length + 2} className="testlog-empty">
+                    No test sessions yet. Add a date row to start logging.
+                  </td>
+                </tr>
+              ) : (
+                sessions.map((session) => {
+                  const tone = sessionRowTone(session, columns);
+                  const editing = editingSessionId === session.id;
+                  return (
+                    <tr key={session.id} className={`testlog-row testlog-row--${tone}`}>
+                      <td className="testlog-table__sticky">
+                        {editing ? (
+                          <input
+                            type="date"
+                            className="admin-settings__input"
+                            value={editingSessionDate}
+                            onChange={(e) => setEditingSessionDate(e.target.value)}
+                          />
+                        ) : (
+                          <div className="testlog-date">
+                            <strong>{session.date || '—'}</strong>
+                            <small>Updated {formatWhen(session.updatedAt)}</small>
+                          </div>
+                        )}
+                      </td>
+                      {columns.map((col) => {
+                        const status = session.results?.[col.id] || 'unchecked';
+                        const key = `cell-${session.id}-${col.id}`;
+                        return (
+                          <td key={col.id}>
+                            <button
+                              type="button"
+                              className={`testlog-cell testlog-cell--${status}`}
+                              onClick={() => handleCycleCell(session, col.id)}
+                              disabled={busyKey === key}
+                              title="Click to cycle status"
+                            >
+                              {busyKey === key ? (
+                                <Loader size={12} className="spinning" />
+                              ) : (
+                                cellLabel(status)
+                              )}
+                            </button>
+                          </td>
+                        );
+                      })}
+                      <td>
+                        {editing ? (
+                          <div className="testlog-session-edit">
+                            <textarea
+                              className="admin-settings__input"
+                              rows={2}
+                              value={editingSessionNotes}
+                              onChange={(e) => setEditingSessionNotes(e.target.value)}
+                              placeholder="Notes"
+                            />
+                            <div className="testlog-session-edit__actions">
+                              <button
+                                type="button"
+                                className="admin-settings__btn admin-settings__btn--primary admin-settings__btn--inline"
+                                onClick={() => handleSaveSession(session.id)}
+                                disabled={busyKey === `session-${session.id}`}
+                              >
+                                <Save size={14} />
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                className="admin-settings__btn admin-settings__btn--secondary admin-settings__btn--inline"
+                                onClick={() => setEditingSessionId('')}
+                              >
+                                <X size={14} />
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="testlog-session-side">
+                            {session.notes ? (
+                              <p className="testlog-session-notes">{session.notes}</p>
+                            ) : (
+                              <p className="testlog-session-notes is-muted">No notes</p>
+                            )}
+                            <div className="testlog-session-side__actions">
+                              <button
+                                type="button"
+                                className="checklist-icon-btn"
+                                title="Edit row"
+                                onClick={() => {
+                                  setEditingSessionId(session.id);
+                                  setEditingSessionDate(session.date || todayIsoDate());
+                                  setEditingSessionNotes(session.notes || '');
+                                }}
+                              >
+                                <Pencil size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                className="checklist-icon-btn checklist-icon-btn--danger"
+                                title="Delete row"
+                                onClick={() => handleDeleteSession(session.id, session.date)}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
+
+      <p className="admin-settings__hint" style={{ marginTop: 12 }}>
+        <CheckSquare size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+        Tip: green row = all pass/N/A · red row = any fail · click cells to update.
+      </p>
     </div>
   );
 }
