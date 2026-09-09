@@ -76,19 +76,6 @@ export default function Notifications() {
   });
   const [result, setResult] = useState(null);
 
-  const hasActiveFilters = useMemo(
-    () =>
-      Boolean(
-        filters.userType ||
-          filters.accountStatus ||
-          filters.signupMethod ||
-          filters.isOnline ||
-          filters.signupComplete ||
-          filters.profileComplete
-      ),
-    [filters]
-  );
-
   const filteredUsers = useMemo(() => {
     let rows = users;
 
@@ -138,8 +125,6 @@ export default function Notifications() {
     return rows.slice(0, 100);
   }, [users, searchTerm, filters]);
 
-  const showUserPicker = Boolean(searchTerm) || hasActiveFilters;
-
   useEffect(() => {
     if (activeTab !== 'users') return;
 
@@ -186,9 +171,31 @@ export default function Notifications() {
     });
   };
 
+  const matchingWithFcm = useMemo(
+    () => filteredUsers.filter((u) => u.fcmToken),
+    [filteredUsers]
+  );
+
+  const allMatchingSelected =
+    matchingWithFcm.length > 0 &&
+    matchingWithFcm.every((u) => selectedUsers.includes(u.id));
+
+  const someMatchingSelected =
+    matchingWithFcm.some((u) => selectedUsers.includes(u.id)) && !allMatchingSelected;
+
   const selectAllMatching = () => {
-    const ids = filteredUsers.filter((u) => u.fcmToken).map((u) => u.id);
+    const ids = matchingWithFcm.map((u) => u.id);
     setSelectedUsers((prev) => Array.from(new Set([...prev, ...ids])));
+  };
+
+  const deselectMatching = () => {
+    const idSet = new Set(matchingWithFcm.map((u) => u.id));
+    setSelectedUsers((prev) => prev.filter((id) => !idSet.has(id)));
+  };
+
+  const toggleSelectAllMatching = () => {
+    if (allMatchingSelected) deselectMatching();
+    else selectAllMatching();
   };
 
   const buildNotificationData = () => {
@@ -391,206 +398,189 @@ export default function Notifications() {
             )}
 
             {activeTab === 'users' && (
-              <div className="form-group">
-                <label>Filter by criteria</label>
-                <div className="notif-filter-grid">
-                  <div className="notif-filter-field">
-                    <label htmlFor="notif-user-type">User type</label>
-                    <select
-                      id="notif-user-type"
-                      value={filters.userType}
-                      onChange={(e) => handleFilterChange('userType', e.target.value)}
-                    >
-                      <option value="">All types</option>
-                      <option value="customer">Customers</option>
-                      <option value="serviceProvider">Service providers</option>
-                    </select>
+              <div className="notif-audience">
+                <div className="notif-audience__filters">
+                  <div className="notif-filter-grid">
+                    <div className="notif-filter-field">
+                      <label htmlFor="notif-user-type">User type</label>
+                      <select
+                        id="notif-user-type"
+                        value={filters.userType}
+                        onChange={(e) => handleFilterChange('userType', e.target.value)}
+                      >
+                        <option value="">All types</option>
+                        <option value="customer">Customers</option>
+                        <option value="serviceProvider">Service providers</option>
+                      </select>
+                    </div>
+                    <div className="notif-filter-field">
+                      <label htmlFor="notif-account-status">Account status</label>
+                      <select
+                        id="notif-account-status"
+                        value={filters.accountStatus}
+                        onChange={(e) => handleFilterChange('accountStatus', e.target.value)}
+                      >
+                        <option value="">All statuses</option>
+                        <option value="approved">Approved</option>
+                        <option value="pending_approval">Pending approval</option>
+                        <option value="rejected">Rejected</option>
+                        <option value="unverified">Unverified</option>
+                      </select>
+                    </div>
+                    <div className="notif-filter-field">
+                      <label htmlFor="notif-online">Online status</label>
+                      <select
+                        id="notif-online"
+                        value={filters.isOnline}
+                        onChange={(e) => handleFilterChange('isOnline', e.target.value)}
+                      >
+                        <option value="">Any</option>
+                        <option value="true">Online now</option>
+                        <option value="false">Offline</option>
+                      </select>
+                    </div>
+                    <div className="notif-filter-field">
+                      <label htmlFor="notif-signup-method">Sign-up method</label>
+                      <select
+                        id="notif-signup-method"
+                        value={filters.signupMethod}
+                        onChange={(e) => handleFilterChange('signupMethod', e.target.value)}
+                      >
+                        <option value="">Any</option>
+                        <option value="social">Google / Apple</option>
+                        <option value="phone">Phone sign-up</option>
+                      </select>
+                    </div>
                   </div>
-                  <div className="notif-filter-field">
-                    <label htmlFor="notif-account-status">Account status</label>
-                    <select
-                      id="notif-account-status"
-                      value={filters.accountStatus}
-                      onChange={(e) => handleFilterChange('accountStatus', e.target.value)}
-                    >
-                      <option value="">All statuses</option>
-                      <option value="approved">Approved</option>
-                      <option value="pending_approval">Pending approval</option>
-                      <option value="rejected">Rejected</option>
-                      <option value="unverified">Unverified</option>
-                    </select>
+                  <div className="notif-filter-checks">
+                    <label className="notif-filter-check">
+                      <input
+                        type="checkbox"
+                        checked={filters.signupComplete}
+                        onChange={(e) => handleFilterChange('signupComplete', e.target.checked)}
+                      />
+                      Signup complete only
+                    </label>
+                    <label className="notif-filter-check">
+                      <input
+                        type="checkbox"
+                        checked={filters.profileComplete}
+                        onChange={(e) => handleFilterChange('profileComplete', e.target.checked)}
+                      />
+                      Profile complete only
+                    </label>
                   </div>
-                  <div className="notif-filter-field">
-                    <label htmlFor="notif-online">Online status</label>
-                    <select
-                      id="notif-online"
-                      value={filters.isOnline}
-                      onChange={(e) => handleFilterChange('isOnline', e.target.value)}
-                    >
-                      <option value="">Any</option>
-                      <option value="true">Online now</option>
-                      <option value="false">Offline</option>
-                    </select>
-                  </div>
-                  <div className="notif-filter-field">
-                    <label htmlFor="notif-signup-method">Sign-up method</label>
-                    <select
-                      id="notif-signup-method"
-                      value={filters.signupMethod}
-                      onChange={(e) => handleFilterChange('signupMethod', e.target.value)}
-                    >
-                      <option value="">Any</option>
-                      <option value="social">Google / Apple</option>
-                      <option value="phone">Phone sign-up</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="notif-filter-checks">
-                  <label className="notif-filter-check">
-                    <input
-                      type="checkbox"
-                      checked={filters.signupComplete}
-                      onChange={(e) => handleFilterChange('signupComplete', e.target.checked)}
-                    />
-                    Signup complete only
-                  </label>
-                  <label className="notif-filter-check">
-                    <input
-                      type="checkbox"
-                      checked={filters.profileComplete}
-                      onChange={(e) => handleFilterChange('profileComplete', e.target.checked)}
-                    />
-                    Profile complete only
-                  </label>
                 </div>
 
-                <label>Search & Select Users</label>
-                <div className="search-dropdown-container">
-                  <div className="search-input-wrapper">
-                    <Search size={16} className="search-icon" />
+                <div className="notif-picker">
+                  <div className="notif-picker__search">
+                    <Search size={16} />
                     <input
                       type="text"
-                      placeholder="Search by name, email, or phone..."
+                      placeholder="Search by name, email, or phone…"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="notifications-search-input"
                     />
                   </div>
 
-                  {showUserPicker && (
-                    <div className="notif-picker-toolbar">
-                      <span className="notif-picker-count">
-                        {filteredUsers.length} match
-                        {filteredUsers.length === 1 ? '' : 'es'}
-                        {filteredUsers.filter((u) => u.fcmToken).length
-                          ? ` · ${filteredUsers.filter((u) => u.fcmToken).length} with FCM`
-                          : ''}
-                      </span>
+                  <div className="notif-picker__toolbar">
+                    <label className="notif-picker__select-all">
+                      <input
+                        type="checkbox"
+                        checked={allMatchingSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = someMatchingSelected;
+                        }}
+                        onChange={toggleSelectAllMatching}
+                        disabled={matchingWithFcm.length === 0}
+                      />
+                      <span>Select all</span>
+                    </label>
+                    <span className="notif-picker__meta">
+                      {selectedUsers.length} selected
+                      <span className="notif-picker__dot">·</span>
+                      {matchingWithFcm.length}/{filteredUsers.length} push-ready
+                    </span>
+                    <div className="notif-picker__actions">
                       <button
                         type="button"
-                        className="btn-select-matching"
+                        className="notif-picker__btn"
                         onClick={selectAllMatching}
-                        disabled={!filteredUsers.some((u) => u.fcmToken)}
+                        disabled={matchingWithFcm.length === 0 || allMatchingSelected}
                       >
                         Select all with FCM
                       </button>
+                      {selectedUsers.length > 0 && (
+                        <button
+                          type="button"
+                          className="notif-picker__btn notif-picker__btn--danger"
+                          onClick={() => setSelectedUsers([])}
+                        >
+                          Clear
+                        </button>
+                      )}
                     </div>
-                  )}
+                  </div>
 
-                  {showUserPicker && filteredUsers.length > 0 && (
-                    <div className="dropdown-results notif-filter-results">
-                      {filteredUsers.map((user) => {
+                  <div className="notif-picker__list">
+                    {filteredUsers.length === 0 ? (
+                      <div className="notif-picker__empty">No users match these filters</div>
+                    ) : (
+                      filteredUsers.map((user) => {
                         const checked = selectedUsers.includes(user.id);
+                        const canSelect = Boolean(user.fcmToken);
                         return (
-                          <div
+                          <label
                             key={user.id}
-                            className={`dropdown-item ${
-                              !user.fcmToken ? 'disabled' : 'clickable'
-                            } ${checked ? 'is-selected' : ''}`}
-                            onClick={() => user.fcmToken && handleUserSelect(user.id)}
+                            className={`notif-picker__row ${checked ? 'is-selected' : ''} ${
+                              !canSelect ? 'is-disabled' : ''
+                            }`}
                           >
-                            <div className="tile-content">
-                              <div className="tile-header">
-                                <span className="customer-name">
-                                  {checked ? '✓ ' : ''}
-                                  {user.name}
-                                </span>
-                                <span
-                                  className={`fcm-badge ${user.fcmToken ? 'has-token' : 'no-token'}`}
-                                >
-                                  {user.fcmToken ? '✓ FCM' : '✗ No FCM'}
-                                </span>
-                              </div>
-                              <div className="tile-details">
-                                <div className="detail-item">
-                                  <span className="detail-label">Email:</span>
-                                  <span className="detail-value">{user.email || 'N/A'}</span>
-                                </div>
-                                {!!user.phoneNumber && (
-                                  <div className="detail-item">
-                                    <span className="detail-label">Phone:</span>
-                                    <span className="detail-value">{user.phoneNumber}</span>
-                                  </div>
-                                )}
-                                {!!user.userType && (
-                                  <div className="detail-item">
-                                    <span className="detail-label">Type:</span>
-                                    <span className="detail-value">
-                                      {formatUserType(user.userType)}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={!canSelect}
+                              onChange={() => handleUserSelect(user.id)}
+                            />
+                            <span className="notif-picker__name">
+                              {user.name}
+                            </span>
+                            <span className="notif-picker__info">
+                              {user.email || user.phoneNumber || 'No contact'}
+                              {user.userType ? ` · ${formatUserType(user.userType)}` : ''}
+                            </span>
+                            <span
+                              className={`notif-picker__fcm ${
+                                canSelect ? 'is-ok' : 'is-missing'
+                              }`}
+                            >
+                              {canSelect ? 'FCM' : 'No FCM'}
+                            </span>
+                          </label>
                         );
-                      })}
-                    </div>
-                  )}
-
-                  {showUserPicker && filteredUsers.length === 0 && (
-                    <div className="dropdown-empty">No users match these filters</div>
-                  )}
+                      })
+                    )}
+                  </div>
                 </div>
 
                 {selectedUserModels.length > 0 && (
-                  <div className="receivers-section">
-                    <div className="receivers-header">
-                      <h4>Recipients ({selectedUserModels.length})</h4>
-                      <button
-                        type="button"
-                        className="btn-clear-all"
-                        onClick={() => setSelectedUsers([])}
-                      >
-                        Clear All
-                      </button>
+                  <div className="notif-selected">
+                    <div className="notif-selected__head">
+                      <strong>Recipients</strong>
+                      <span>{selectedUserModels.length}</span>
                     </div>
-                    <div className="receivers-list">
+                    <div className="notif-selected__chips">
                       {selectedUserModels.map((user) => (
-                        <div key={user.id} className="receiver-card">
-                          <div className="receiver-info">
-                            <div className="receiver-name">
-                              {user.name}
-                              {user.userType
-                                ? ` · ${formatUserType(user.userType)}`
-                                : ''}
-                            </div>
-                            <div className="receiver-details">
-                              <span className="receiver-email">{user.email || 'N/A'}</span>
-                              {!!user.phoneNumber && (
-                                <span className="receiver-phone">{user.phoneNumber}</span>
-                              )}
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            className="btn-remove-receiver"
-                            onClick={() => handleUserSelect(user.id)}
-                            title="Remove"
-                          >
-                            ✕
-                          </button>
-                        </div>
+                        <button
+                          key={user.id}
+                          type="button"
+                          className="notif-selected__chip"
+                          onClick={() => handleUserSelect(user.id)}
+                          title="Remove"
+                        >
+                          {user.name}
+                          <span aria-hidden="true">×</span>
+                        </button>
                       ))}
                     </div>
                   </div>
